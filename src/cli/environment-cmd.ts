@@ -13,10 +13,10 @@ import * as os from 'os';
 import * as sudo from 'sudo-prompt';
 import * as vscode from 'vscode';
 import { ShellExecution, ShellQuotedString, Task, TaskScope, WorkspaceFolder } from 'vscode';
-import TinderWorkspace from '../tinder-workspace';
 import { SIGINT } from 'constants';
 import { Commands } from '../commands/commands-base';
 import config from '../config';
+import { Util } from '../util';
 
 export type CommandLineArgs = Array<ShellQuotedString | string>;
 
@@ -60,7 +60,7 @@ export abstract class EnvironmentCmd {
             alwaysRunNew: true,
             rejectOnError: true,
             focus: false,
-            reveal: config.showTerminal.other,
+            reveal: vscode.TaskRevealKind.Always,
         };
     }
 
@@ -90,6 +90,22 @@ export abstract class EnvironmentCmd {
     protected get workspaceRoot(): string | undefined {
         return this.workspace?.uri.fsPath;
     }
+    
+    private _isAvailable: boolean | undefined = undefined;
+    public get isAvailable(): boolean {
+        if (this._isAvailable !== undefined) {
+            return this._isAvailable;
+        }
+        
+        try {
+            this.guardBinaryExists();
+            this._isAvailable = true;
+        } catch (e) {
+            this._isAvailable = false;
+        }
+        
+        return this._isAvailable;
+    }
 
     /** Asserts that the binary exists in the specified location */
     private guardBinaryExists() {
@@ -108,7 +124,7 @@ export abstract class EnvironmentCmd {
     /** Asserts that we have exactly 1 workspace folder open */
     private guardHasWorkspaceRoot() {
         if (this.workspaceRoot) return;
-        this.workspace = TinderWorkspace.workspaceFolderOrThrows();
+        this.workspace = Util.workspaceFolder();
     }
 
     private _cancellationToken: vscode.CancellationToken | undefined = undefined;
@@ -124,7 +140,7 @@ export abstract class EnvironmentCmd {
      * A token used to cancel the current command. Set this property before
      * running a command to allow it to be cancelled.
      */
-    set oneTimeCancellationToken(token: vscode.CancellationToken) {
+    set oneTimeCancellationToken(token: vscode.CancellationToken | undefined) {
         this._cancellationToken = token;
     }
 

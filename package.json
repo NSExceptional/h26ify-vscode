@@ -1,44 +1,145 @@
 {
-  "name": "h26ify",
-  "displayName": "H26ify",
-  "description": "Utilities for managing and converting videos in a folder to h265",
-  "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.101.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [],
-  "main": "./out/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "h26ify.helloWorld",
-        "title": "Hello World"
-      }
-    ]
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
-  },
-  "devDependencies": {
-    "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
-    "@types/vscode": "^1.101.0",
-    "@typescript-eslint/eslint-plugin": "^8.31.1",
-    "@typescript-eslint/parser": "^8.31.1",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.25.1",
-    "typescript": "^5.8.3"
-  },
-  "dependencies": {
-    "lazy-get-decorator": "^3.0.0"
-  }
+    "name": "h26ify",
+    "publisher": "tanner",
+    "displayName": "H26ify",
+    "description": "Utilities for managing and converting videos in a folder to h265",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.100.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [],
+    "main": "./out/extension.js",
+    "contributes": {
+        "configuration": {
+            "title": "H26ify",
+            "properties": {
+                "h26ify.videoExtensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "mp4",
+                        "mov",
+                        "avi",
+                        "mkv",
+                        "webm",
+                        "flv",
+                        "wmv"
+                    ],
+                    "description": "List of video file extensions to scan for"
+                },
+                "h26ify.outputNamePattern": {
+                    "type": "string",
+                    "default": "{filename}.hevc{extension}",
+                    "description": "Pattern for naming converted files. Use {filename} and {extension} as placeholders"
+                }
+            }
+        },
+        "commands": [
+            {
+                "command": "h26ify.refreshVideos",
+                "title": "Refresh Videos",
+                "icon": "$(refresh)",
+                "category": "H26ify",
+                "cancellable": true,
+                "progress": {
+                    "view": "h26ify.videos"
+                }
+            },
+            {
+                "command": "h26ify.convertToHEVC",
+                "title": "Convert to HEVC",
+                "icon": "$(dashboard)",
+                "category": "H26ify"
+            },
+            {
+                "command": "h26ify.convertAllToHEVC",
+                "title": "Convert All to HEVC",
+                "icon": "$(zap)",
+                "category": "H26ify"
+            },
+            {
+                "command": "h26ify.recode",
+                "title": "Reduce File Size",
+                "icon": "$(filter)",
+                "category": "H26ify"
+            },
+            {
+                "command": "h26ify.recodeAll",
+                "title": "Reduce All File Sizes",
+                "icon": "$(filter)",
+                "category": "H26ify"
+            }
+        ],
+        "views": {
+            "explorer": [
+                {
+                    "id": "h26ify.videos",
+                    "name": "Videos",
+                    "icon": "$(device-camera-video)",
+                    "contextualTitle": "Videos"
+                }
+            ]
+        },
+        "menus": {
+            "view/title": [
+                {
+                    "command": "h26ify.refreshVideos",
+                    "when": "view == h26ify.videos",
+                    "group": "navigation"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "h26ify.convertToHEVC",
+                    "when": "viewItem == video",
+                    "group": "inline"
+                },
+                {
+                    "command": "h26ify.recode",
+                    "when": "viewItem == video-hevc",
+                    "group": "inline"
+                },
+                {
+                    "command": "h26ify.convertAllToHEVC",
+                    "when": "viewItem == category-other",
+                    "group": "inline"
+                },
+                {
+                    "command": "h26ify.recodeAll",
+                    "when": "viewItem == category-hevc",
+                    "group": "inline"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src",
+        "test": "vscode-test"
+    },
+    "devDependencies": {
+        "@types/mocha": "^10.0.10",
+        "@types/node": "20.x",
+        "@types/vscode": "^1.100.0",
+        "@typescript-eslint/eslint-plugin": "^8.31.1",
+        "@typescript-eslint/parser": "^8.31.1",
+        "@vscode/test-cli": "^0.0.10",
+        "@vscode/test-electron": "^2.5.2",
+        "eslint": "^9.25.1",
+        "typescript": "^5.8.3",
+        "vitest": "^3.2.4"
+    },
+    "dependencies": {
+        "lazy-get-decorator": "^3.0.0",
+        "sudo-prompt": "^9.2.1",
+        "trash": "^9.0.0"
+    }
 }

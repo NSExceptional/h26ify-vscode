@@ -9,13 +9,6 @@ import { Event, EventEmitter, ProviderResult, TreeDataProvider, TreeItem, TreeVi
 
 type EventType<E> = E | undefined | null | void;
 
-/** A `TreeItem` that can be "picked" from a `QuickPick` */
-export interface PickableTreeItem extends TreeItem {
-    label: string;
-    iconPath?: undefined;
-    description?: string;
-}
-
 /** A non-tree structured list of items (i.e. no nesting of children) */
 export default abstract class BaseListProvider<T extends TreeItem> implements TreeDataProvider<T> {
     /** A string to use in status messages */
@@ -93,6 +86,7 @@ export default abstract class BaseListProvider<T extends TreeItem> implements Tr
                 return items;
             })
             .catch(error => {
+                // This is NOT caught by the machinery in the @cmd decorator.
                 window.showErrorMessage(`Error loading ${this.contentKind}: ${error.message}`);
                 return [];
             });

@@ -29,9 +29,11 @@ export class Commands {
     static outputChannel: vscode.OutputChannel = window.createOutputChannel('TinderStudio');
     /** A map of command IDs to their invocations, populated by `cmd-decorators.ts`. */
     static commandMap: { [command: string]: CommandRegistration } = {};
+    /** A map of command class names to their singleton instances, populated in `cmd-decorators.ts`. */
+    static instanceMap: { [typeName: string]: Commands } = {};
     /** `contributes.commands` pulled from the extension's package.json */
     static contributedCommands: PackageJSONCommandEntry[] =
-        vscode.extensions.getExtension('tinder.tinder-studio')?.packageJSON.contributes.commands ?? [];
+        vscode.extensions.getExtension('tanner.h26ify')?.packageJSON.contributes.commands ?? [];
 
     /** Errors and other output are written to this extension's output channel */
     public get outputChannel() {

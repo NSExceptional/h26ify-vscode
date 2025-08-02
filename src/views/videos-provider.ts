@@ -6,52 +6,86 @@
 //  Copyright © 2023 Tanner Bennett. All rights reserved.
 //
 
-import { TreeItem, Uri, workspace } from 'vscode';
-import BaseListProvider, { PickableTreeItem } from './base-provider';
+import * as vscode from 'vscode';
+import { VideoDataSource } from '../video/video-data-source';
+import VideoItem from '../video/video-item';
 
-/** The list of all video files in the workspace */
-export class VideosViewProvider extends BaseListProvider<PickableTreeItem> {
-    protected contentKind = 'Videos';
-
-    private excludedDirectories = [
-        'external',
-        'bazel-*',
-        'node_modules',
-        '.git',
-        '.build',
-        'build',
-    ];
-
-    public files: Uri[] | undefined = undefined;
-
-    public get selectedFiles(): readonly TreeItem[] | undefined {
-        return this.treeView?.selection;
+export class CategoryItem extends vscode.TreeItem {
+    constructor(
+        public readonly label: string,
+        public readonly items: VideoItem[],
+        public readonly contextValue: string = 'category',
+        public readonly iconPath: vscode.ThemeIcon = new vscode.ThemeIcon('folder')
+    ) {
+        super(label, items.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+        this.id = `category:${label}`;
     }
+}
 
-    protected reloadData = async () => {
-        const excludeGlob = `{${this.excludedDirectories.join(',')}}/`;
-        const videoExtensions = ['mp4', 'mov', 'avi', 'mkv'];
-        const videosGlob = `**/*.{"${videoExtensions.join('","')}"}`;
-
-        const videoURIs = await workspace.findFiles(videosGlob, excludeGlob);
-        this.files = videoURIs;
+export class VideosViewProvider implements vscode.TreeDataProvider<CategoryItem | VideoItem> {
+    private _onDidChangeTreeData = new vscode.EventEmitter<CategoryItem | VideoItem | undefined | null | void>();
+    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    
+    private dataSource = VideoDataSource.shared;
+    
+    constructor() {
+        this.dataSource.onDidChangeVideos(() => {
+            this.refresh();
+        });
+    }
+    
+    refresh(): void {
+        this._onDidChangeTreeData.fire();
+    }
+    
+    async reloadAndRefresh(): Promise<void> {
+        await this.dataSource.refresh();
+    }
+    
+    getTreeItem(element: CategoryItem | VideoItem): vscode.TreeItem {
+        return element;
+    }
+    
+    async getChildren(element?: CategoryItem | VideoItem): Promise<(CategoryItem | VideoItem)[]> {
+        if (this.dataSource.isRefreshing) {
+            return [];
+        }
         
-        const items = this.files.map(this.fileToTreeItem);
-        const sorted = items.sort((a, b) => (a.label as string).localeCompare(b.label as string));
-        return sorted;
+        if (!element) {
+            // Root level - show categories //
+            
+            const hevcCategory = new CategoryItem(
+                'HEVC', 
+                this.dataSource.hevcVideos,
+                'category-hevc',
+                new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.green'))
+            );
+            
+            const otherCategory = new CategoryItem(
+                'Non-HEVC', 
+                this.dataSource.otherVideos,
+                'category-other',
+                new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.yellow'))
+            );
+            
+            return [hevcCategory, otherCategory];
+        } else if (element instanceof CategoryItem) {
+            // Return videos in this category
+            return element.items.length > 0 ? element.items : [this.createInfoItem(`No ${element.label} videos found`)];
+        }
+        
+        return [];
     }
-
-    removeItem(item: PickableTreeItem): void {
-        super.removeItem(item);
-        this.files = this.files?.filter(f => f.path !== item.id);
-    }
-
-    private fileToTreeItem(file: Uri): PickableTreeItem {
-        return {
-            id: file.path,
-            label: file.path.split('/').pop()!, // 'video.mp4'
-            resourceUri: file,
-            contextValue: 'video',
-        };
+    
+    /** Placeholder for empty sections */
+    private createInfoItem(message: string): VideoItem {
+        const item = new VideoItem(
+            vscode.Uri.parse('info:message'),
+            null,
+            message
+        );
+        item.contextValue = 'info';
+        item.iconPath = new vscode.ThemeIcon('info');
+        return item;
     }
 }

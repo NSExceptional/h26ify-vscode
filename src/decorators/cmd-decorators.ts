@@ -14,6 +14,8 @@ function isPromise(thing: any): thing is Promise<any> {
     return !!thing.then;
 }
 
+type ProgressType = { notification?: string, view?: string };
+
 /** A schema for commands as they are written in `commands.jsonc`, including our own additions */
 export type PackageJSONCommandEntry = {
     command: string,
@@ -22,7 +24,7 @@ export type PackageJSONCommandEntry = {
     enablement?: string,
 
     /** A label to display in a progress view for the command */
-    progress?: string,
+    progress?: ProgressType,
     /** Whether the command is cancellable--if so, it should accept an additional cancellation token arg */
     cancellable?: boolean,
     /** Whether the command operates on TreeItems and expects 1+ items */
@@ -37,15 +39,24 @@ export type CommandRegistration = {
     finalInvocation: (...args: any[]) => any,
 };
 
+type Ctor<T> = new (...args: any[]) => T;
+
 /** A decorator to use on `Commands` subclass methods to register extension commands */
 export function cmd(name: string) {
     const options = Commands.contributedCommands.find(c => c.command === name);
-
+    const exts = vscode.extensions.getExtension('tanner.h26ify');
     return function<C extends Commands>(type: C, propertyKey: string, descriptor: PropertyDescriptor) {
+        // Create the singleton instance as needed
+        const typeName = type.constructor.name;
+        if (!Commands.instanceMap[typeName]) {
+            Commands.instanceMap[typeName] = new (type.constructor as Ctor<C>)();
+        }
+        
         // descriptor.value is the method we are decorating
         const multiSelect = options?.isMultiSelect ?? false;
         const invocation = async (...args: any[]): Promise<any> => {
-            await descriptor.value.call(type, ...args)
+            const singleton = Commands.instanceMap[typeName];
+            await descriptor.value.call(singleton, ...args)
         };
 
         /** Necessary to allow sending multiple selections to a command */
@@ -71,17 +82,23 @@ export function cmd(name: string) {
         }
 
         /** Invoke a command with a given progress indicator message */
-        async function invokeWithProgress(impl: typeof invocation, args: any[], progress: string) {
+        async function invokeWithProgress(impl: typeof invocation, args: any[], progress: ProgressType) {
+            const location = progress.view ?
+                { viewId: progress.view } :
+                vscode.ProgressLocation.Notification;
+                
             // Begin showing progress
             return await window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: progress,
+                location,
+                title: progress.notification,
                 cancellable: options?.cancellable ?? false,
             }, async (progress, token) => {
-                return await impl(...args, token);
+                return await impl(...args, token, progress);
             });
         }
 
+        // The args passed here are passed in by VS Code; we capture them and
+        // append them to the call _after_ we pass in `this` (see `invocation` above)
         const finalInvocation = async (...args: any[]) => {
             // Pull out multi selections if necessary
             args = pullArgsFromArgs(args, multiSelect);
@@ -114,7 +131,7 @@ export function cmd(name: string) {
         /** Add the command to the registry; Commands.init() will register them */
         Commands.commandMap[name] = {
             name,
-            type: type as any,
+            type: type.constructor as any,
             methodName: propertyKey,
             method: descriptor.value,
             finalInvocation,

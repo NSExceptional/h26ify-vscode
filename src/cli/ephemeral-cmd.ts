@@ -6,7 +6,6 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { EnvironmentCmd } from './environment-cmd';
-import bazelisk from './bazelisk';
 import path from 'path';
 
 /** Such as `@Buildozer//:buildozer-darwin-arm64` */
@@ -45,10 +44,9 @@ export abstract class EphemeralCommand extends EnvironmentCmd {
             const folder = path.dirname(shellPath);
             fs.mkdirSync(folder, { recursive: true });
 
-            // Generate the tool, like so:
-            //    bazelisk run @Buildozer//:toolName --script_path='.vscode/bin/toolName'
-            await bazelisk.run(`${this.toolID} --script_path='${this.expectedBinaryPath.relativeToWorkspace}'`);
-
+            // Generate the tool
+            throw new Error(`Ephemeral commands are not configured for this workspace.`);
+            
             if (!fs.existsSync(shellPath)) {
                 throw new Error(`Failed to generate command shell wrapper for ${this.toolName}`);
             }

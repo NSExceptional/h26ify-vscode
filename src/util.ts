@@ -8,11 +8,11 @@
 
 import * as vscode from 'vscode';
 import path from 'path';
-import { QuickPick, QuickPickItem, QuickPickOptions, Uri, window, workspace } from 'vscode';
-import TinderWorkspace from './tinder-workspace';
+import { window, workspace } from 'vscode';
+import { CancellationToken } from 'vscode';
+import { QuickPick, QuickPickItem, QuickPickOptions, Uri } from 'vscode';
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
-import { BazelTarget } from './cli/bazelisk';
 
 type QuickPickOptionsPro = QuickPickOptions & {
     mustPickSome?: boolean;
@@ -20,6 +20,11 @@ type QuickPickOptionsPro = QuickPickOptions & {
 
 type QuickPickOneOptions = Omit<QuickPickOptionsPro, 'canPickMany'>;
 type QuickPickManyOptions = QuickPickOptionsPro & { canPickMany: true };
+
+export type Progress = vscode.Progress<{
+    message?: string;
+    increment?: number;
+}>;
 
 export type MessageItemT<T extends String> = vscode.MessageItem & {
     title: T;
@@ -36,10 +41,56 @@ type SplitGetOptions<T> = {
 }
 
 export class Util {
+    
+    public static testing = false;
+    public static mockProgress: Progress | undefined = undefined;
 
     /** Mostly just for debugging */
     static sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
+    /**
+     * Combines two cancellation tokens into one.
+     * 
+     * The resulting token will be cancelled if either of the input tokens is cancelled.
+     * If either token is already cancelled, the result will be cancelled immediately.
+     * 
+     * Note that you cannot manually cancel a token, you can only observe cancellation.
+     * This makes it easy to observe cancellation of two tokens at once.
+     */
+    static combineCancellationTokens(child: CancellationToken, parent?: CancellationToken): CancellationToken {
+        if (!parent) {
+            return child;
+        }
+        
+        // Create a new token that cancels when either input token cancels
+        const combined = new vscode.CancellationTokenSource();
+        // Cancelling the parent token will cancel all child operations
+        parent.onCancellationRequested(() => combined.cancel());
+        // Cancelling the child token will cancel the combined token,
+        // but the parent token can't see it anyway; parent should be
+        // using its own token still and not the combined token
+        child.onCancellationRequested(() => combined.cancel());
+        if (parent.isCancellationRequested || child.isCancellationRequested) {
+            combined.cancel();
+        }
+        
+        return combined.token;
+    }
+
+    static async withProgressNotif<T>(message: string, work: (cancelToken: CancellationToken, progress: Progress) => Promise<T>): Promise<T> {
+        if (this.testing && Util.mockProgress) {
+            return await work(new vscode.CancellationTokenSource().token, Util.mockProgress);
+        }
+        
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: message,
+            cancellable: true
+        }, async (progress, token) => {
+            return await work(token, progress);
+        });
     }
 
     static isString(value: unknown): value is string {
@@ -116,23 +167,25 @@ export class Util {
         const dateString = date.toISOString().split('T')[0];
         return withTimestamp ? `${dateString}-${date.getTime()}` : dateString;
     }
-
-    /** @returns a URI for a file in the workspace; throws if no valid Tinder workspace */
-    static workspaceFileURI(relativeFilename: string): Uri;
-    /** @returns a URI for a file in the workspace, if there is a valid Tinder workspace */
-    static workspaceFileURI(relativeFilename: string, throws: true): Uri | undefined;
-
-    static workspaceFileURI(relativeFilename: string, throws?: boolean): Uri | undefined {
-        if (throws) {
-            return Uri.file(TinderWorkspace.workspaceRootOrThrows() + '/' + relativeFilename);
-        }
-        else {
-            const root = TinderWorkspace.workspaceRoot;
-            if (root) {
-                return Uri.file(path.join(root, relativeFilename));
-            }
+    
+    static workspaceFolder(): vscode.WorkspaceFolder | undefined {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
             return undefined;
         }
+        
+        return workspaceFolders[0];
+    }
+
+    /** @returns a URI for a file in the workspace */
+    static workspaceFileURI(relativeFilename: string): Uri | undefined {
+        const workspaceFolder = Util.workspaceFolder();
+        if (!workspaceFolder) {
+            return undefined;
+        }
+
+        const root = workspaceFolder.uri.fsPath;
+        return Uri.file(path.join(root, relativeFilename));
     }
 
     static async createOrReplaceFile(uri: Uri, content: string, openAfter?: boolean): Promise<void> {
@@ -366,157 +419,10 @@ export class Util {
         return Promise.reject();
     }
 
-    /** Parse the .github/CODEOWNERS file and return all nonempty, non-comment lines */
-    static async codeowners(): Promise<string[]> {
-        const cwd = TinderWorkspace.workspaceRootOrThrows();
-        const codeownersAbsolutePath = path.join(cwd, '.github/CODEOWNERS');
-
-        // Get the lines of the CODEOWNERS file from the current working directory
-        const codeownersFile = await workspace.fs.readFile(Uri.file(codeownersAbsolutePath));
-        const lines = codeownersFile.toString().split('\n').map(s => s.trim());
-
-        // Ignore comments and empty lines
-        const validLines = lines.filter(line => {
-            return !line.startsWith('#') && line.includes('/');
-        });
-
-        return validLines;
-    }
-
-    static displayNameFromCodeowner(codeownerHandle: string): string {
-        codeownerHandle = codeownerHandle.replace('@TinderApp/', '');
-        return {
-            "ads-ios": "Ads",
-            "appxp-and-frameworks-ios": "Frameworks/App Experience",
-            "auth-ios": "Auth",
-            "core-chat-ios": "Core Chat",
-            "core-share-ios": "Core Share",
-            "developer-experience-ios": "Developer Experience",
-            "core-optimization-ios": "Core Optimization",
-            "engagement-ios": "Engagement",
-            "epic-ios": "Epic",
-            "g-unit-ios": "G-Unit",
-            "identity-ios": "Identity",
-            "instrumentation-platform-ios": "Instrumentation",
-            "international-growth-ios": "International Growth",
-            "ios-performance-working-group": "Performance",
-            "ios-code-style-group": "iOS Code Style Working Group",
-            "ios-recs-foundation": "Recs",
-            "ios-recs-intelligence": "Recs Intelligence",
-            "ios-tooling-external-contributors": "ios-tooling External Contributors",
-            "ios-tooling-external-maintainers": "ios-tooling External Maintainers",
-            "moongang-ios": "Moongang",
-            "matchlist-ios": "Matchlist",
-            "nodes-adoption-ios": "Nodes Adoption",
-            "onboarding-ios": "Onboarding",
-            "platform-ios": "Platform",
-            "profile-ios": "Profile",
-            "release_ios_qa": "Release QA",
-            "revenue-growth-ios": "Revenue",
-            "social-responsibility-ios": "Social Responsibility",
-            "swift-concurrency-ios": "Swift Concurrency",
-            "swiftui-ios": "SwiftUI",
-            "tappy-cloud-ios": "Tappy Cloud",
-            "tinder-ios-monolith-decomposition": "Monolith Decomposition",
-            "tinder_ios-tinder-session": "iOS Session",
-            "trust-ios": "Trust",
-            "ui-platform-ios": "UI Platform",
-            "url-manager-removal-ios": "URL Manager Removal",
-            "user-growth-ios": "User Growth",
-            "z-team-ios": "Z-Team",
-        }[codeownerHandle] ?? codeownerHandle;
-    }
-
-    /**
-     * Given the lines of a CODEOWNERS file, return a list of codeowners for `relativePathOrError`.
-     * `relativePathOrError` can even be a full error message from Xcode as long as it starts with a relative file path.
-     * Throws an error if the path is not valid or if the file is not in a folder named `tinder_ios`.
-     * */
-    static codeownersForFile(codeownerLines: string[], relativePathOrError: string): string[] {
-        if (!relativePathOrError.includes('/')) {
-            throw new Error('Input does not contain a path');
-        }
-
-        // Add a leading / if it's missing
-        if (!relativePathOrError.startsWith('/')) {
-            relativePathOrError = '/' + relativePathOrError;
-        }
-
-        const tinder_ios_alreadyTrimmed = ['/Projects/', '/Teams/', '/external/']
-            .some(prefix => relativePathOrError.startsWith(prefix));
-
-        // Trim absolute portion of the path if it exists
-        if (!tinder_ios_alreadyTrimmed) {
-            const tinderIndex = relativePathOrError.indexOf('/tinder_ios/');
-            if (tinderIndex === -1) {
-                throw new Error('Input path is not under `tinder_ios` or another expected location');
-            }
-
-            // Remove everything before `/tinder_ios/`
-            relativePathOrError = relativePathOrError.slice(tinderIndex);
-            // Remove leading `/tinder_ios/`
-            relativePathOrError = relativePathOrError.slice(11);
-        }
-
-        // Find the line(s) whose path this file is under
-        const matches = codeownerLines.filter(line => {
-            const components = line.split(' ');
-            const path = components[0];
-            return relativePathOrError.startsWith(path);
-        });
-
-        // Pull the list of codeowners out of each matching line and flatten them
-        const codeowners = matches.map(line => line.split(' ').slice(1));
-        return Array.from(new Set(codeowners.flat())).sort();
-    }
-
-    /** Given some text, parse out any substrings matching a `/path/to/file:line:column` like pattern */
-    static filesFromLineOrSelection(lineOrSelection: string): string[] {
-        let lines = [lineOrSelection];
-        // Split into lines if needed
-        if (lineOrSelection.includes('\n')) {
-            lines = lineOrSelection.split('\n');
-        }
-
-        return lines
-            // Remove non-file lines
-            .filter(line => line.includes('/'))
-            // Convert lines to files
-            .map(line => {
-
-                // Pull file out of line with regex
-                const match = line.match(/(?:\/?[\w.\-\+]+)+(?:\.[\w.\-\+]+)?(?::\d+)?(?::\d+)?/);
-                if (!match) { return null; }
-                // Remove leading / if present, unless the path is absolute
-                const file = match[0].startsWith('/') && !match[0].includes('tinder_ios')
-                    ? match[0].slice(1)
-                    : match[0];
-
-                return file;
-            })
-            // Remove files that failed to parse
-            .filter(file => file !== null) as string[];
-    }
-
-    /** Given some text, parse out the first substring matching a `//path/to/target:TargetName` like pattern */
-    static targetIDFromLineOrSelection(lineOrSelection: string): string | undefined {
-        // Split into lines if needed
-        if (lineOrSelection.includes('\n')) {
-            lineOrSelection = lineOrSelection.split('\n')[0];
-        }
-
-        const match = lineOrSelection.match(/\/\/([^:\s]+):([^:\s]+)/)?.[0];
-        if (!match) {
-            return undefined;
-        }
-
-        return match;
-    }
-
     static tempFile(file: string): string {
-        // Call mkdir -p /var/tmp/tinderstudio first
-        execSync('mkdir -p /var/tmp/tinderstudio');
+        // Call mkdir -p /var/tmp/h26ify first
+        execSync('mkdir -p /var/tmp/h26ify');
         const prefixUUID = randomUUID().split('-')[0];
-        return path.join('/var/tmp/tinderstudio', `${prefixUUID}-${file}`);
+        return path.join('/var/tmp/h26ify', `${prefixUUID}-${file}`);
     }
 }
