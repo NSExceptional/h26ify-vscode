@@ -32,7 +32,7 @@ export class Commands {
     static instanceMap: { [typeName: string]: Commands } = {};
     /** `contributes.commands` pulled from the extension's package.json */
     static contributedCommands: PackageJSONCommandEntry[] =
-        vscode.extensions.getExtension('tanner.h26ify')?.packageJSON.contributes.commands ?? [];
+        vscode.extensions.getExtension('objc.h26ify')?.packageJSON.contributes.commands ?? [];
     /** The extension context, set by `init()` */
     static context: ExtensionContext;
 

@@ -44,7 +44,7 @@ type Ctor<T> = new (...args: any[]) => T;
 /** A decorator to use on `Commands` subclass methods to register extension commands */
 export function cmd(name: string) {
     const options = Commands.contributedCommands.find(c => c.command === name);
-    const exts = vscode.extensions.getExtension('tanner.h26ify');
+    const exts = vscode.extensions.getExtension('objc.h26ify');
     return function<C extends Commands>(type: C, propertyKey: string, descriptor: PropertyDescriptor) {
         // Create the singleton instance as needed
         const typeName = type.constructor.name;

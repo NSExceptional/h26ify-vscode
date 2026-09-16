@@ -1,0 +1,54 @@
+- generic [active] [ref=f3e1]:
+  - iframe [aria-hidden] [ref=f3e2]
+  - link "Skip to content" [ref=f3e3] [cursor=pointer]:
+    - /url: "#start-of-content"
+  - generic [ref=f3e4]:
+    - banner [ref=f3e6]:
+      - generic [ref=f3e8]:
+        - generic:
+          - link " Visual Studio | Marketplace" [ref=f3e9] [cursor=pointer]:
+            - /url: /
+            - generic [ref=f3e10]: 
+            - generic [ref=f3e11]: Visual Studio
+            - generic [ref=f3e12]: "| Marketplace"
+          - generic [ref=f3e13]:
+            - link "Sign in" [ref=f3e15] [cursor=pointer]:
+              - /url: https://app.vssps.visualstudio.com/_signin?realm=marketplace.visualstudio.com&reply_to=https%3A%2F%2Fmarketplace.visualstudio.com%2Fpublishers%2FNSExceptional&redirect=1&protocol=cookieless&context=eyJodCI6MywiaGlkIjoiMjY2M2IxM2YtNTBlMy1hNjU1LWExNTktMjJmNmY0NzI1ZmFiIiwicXMiOnt9LCJyciI6IiIsInZoIjoiIiwiY3YiOiIiLCJjcyI6IiJ90&lltid=82c5efa9-a2f4-4173-a350-f09f9b0813d3&workflowId=marketplace&wt.mc_id=o~msft~marketplace~signIn#ctx=eyJTaWduSW5Db29raWVEb21haW5zIjpbImh0dHBzOi8vbG9naW4ubWljcm9zb2Z0b25saW5lLmNvbSIsImh0dHBzOi8vbG9naW4ubWljcm9zb2Z0b25saW5lLmNvbSJdfQ2
+            - search [ref=f3e17]:
+              - text: 
+              - button "" [ref=f3e18] [cursor=pointer]
+    - main [ref=f3e20]:
+      - generic [ref=f3e21]:
+        - heading "NSExceptional" [level=1] [ref=f3e26]
+        - generic [ref=f3e30]:
+          - img "Publisher has not uploaded any public extension yet!" [ref=f3e31]
+          - generic [ref=f3e32]: Publisher has not uploaded any public extension yet!
+    - contentinfo [ref=f3e34]:
+      - contentinfo [ref=f3e35]:
+        - generic [ref=f3e36]:
+          - list [ref=f3e39]:
+            - listitem [ref=f3e40]:
+              - link "Contact us" [ref=f3e41] [cursor=pointer]:
+                - /url: https://www.visualstudio.com/support/support-overview-vs
+            - listitem [ref=f3e42]:
+              - link "Jobs" [ref=f3e43] [cursor=pointer]:
+                - /url: https://careers.microsoft.com/
+            - listitem [ref=f3e44]:
+              - link "Privacy" [ref=f3e45] [cursor=pointer]:
+                - /url: https://go.microsoft.com/fwlink/?LinkID=521839
+            - listitem [ref=f3e46]:
+              - link "Terms of use" [ref=f3e47] [cursor=pointer]:
+                - /url: https://aka.ms/vsmarketplace-ToU
+            - listitem [ref=f3e48]:
+              - link "Trademarks" [ref=f3e49] [cursor=pointer]:
+                - /url: https://www.microsoft.com/trademarks
+            - listitem [ref=f3e50]:
+              - link "Your Privacy Choices" [ref=f3e51] [cursor=pointer]:
+                - /url: https://aka.ms/YourCaliforniaPrivacyChoices
+            - listitem [ref=f3e52]:
+              - link "Consumer Health Privacy" [ref=f3e53] [cursor=pointer]:
+                - /url: https://go.microsoft.com/fwlink/?linkid=2259814
+          - generic [ref=f3e54]:
+            - text: © 2026 Microsoft
+            - generic "Microsoft" [ref=f3e55]
+  - paragraph [ref=f3e60]: Exited full-screen mode

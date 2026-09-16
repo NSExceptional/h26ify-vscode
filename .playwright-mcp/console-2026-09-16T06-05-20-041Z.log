@@ -1,0 +1,2 @@
+[    2440ms] [LOG] MSAL.js token provider init: no in-flight redirect promise @ https://cdn.vsassets.io/ext/ms.vss-web/msal-content/ms.vss-web.msal-content.es6.wy_rif.min.js:0
+[    2440ms] [LOG] MSAL.js login provider service says no login is necessary; disabling MSAL.js; initialization complete @ https://cdn.vsassets.io/ext/ms.vss-web/msal-content/ms.vss-web.msal-content.es6.wy_rif.min.js:0

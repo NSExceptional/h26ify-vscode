@@ -1,0 +1,102 @@
+- generic [active] [ref=e1]:
+  - iframe [aria-hidden] [ref=e2]
+  - link "Skip to content" [ref=e3] [cursor=pointer]:
+    - /url: "#start-of-content"
+  - generic [ref=e4]:
+    - banner [ref=e6]:
+      - generic [ref=e8]:
+        - generic:
+          - link " Visual Studio | Marketplace" [ref=e9] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e10]: 
+            - generic [ref=e11]: Visual Studio
+            - generic [ref=e12]: "| Marketplace"
+          - generic [ref=e13]:
+            - link "Sign in" [ref=e15] [cursor=pointer]:
+              - /url: https://app.vssps.visualstudio.com/_signin?realm=marketplace.visualstudio.com&reply_to=https%3A%2F%2Fmarketplace.visualstudio.com%2Fpublishers%2Fobjc&redirect=1&protocol=cookieless&context=eyJodCI6MywiaGlkIjoiMjY2M2IxM2YtNTBlMy1hNjU1LWExNTktMjJmNmY0NzI1ZmFiIiwicXMiOnt9LCJyciI6IiIsInZoIjoiIiwiY3YiOiIiLCJjcyI6IiJ90&lltid=4877c453-1faf-44f7-92ec-bf3c80528083&workflowId=marketplace&wt.mc_id=o~msft~marketplace~signIn#ctx=eyJTaWduSW5Db29raWVEb21haW5zIjpbImh0dHBzOi8vbG9naW4ubWljcm9zb2Z0b25saW5lLmNvbSIsImh0dHBzOi8vbG9naW4ubWljcm9zb2Z0b25saW5lLmNvbSJdfQ2
+            - search [ref=e17]:
+              - text: 
+              - button "" [ref=e18] [cursor=pointer]
+    - main [ref=e20]:
+      - generic [ref=e21]:
+        - generic [ref=e25]:
+          - heading "tannerbennett" [level=1] [ref=e26]
+          - generic [ref=e28]: iOS app and jailbreak tweak developer
+          - generic [ref=e30]:
+            - link "Publisher's company link" [ref=e32] [cursor=pointer]:
+              - /url: https://github.com/NSExceptional
+              - text: https://github.com/NSExceptional
+            - text: "|"
+            - link "Publisher's support link" [ref=e34] [cursor=pointer]:
+              - /url: https://github.com/NSExceptional
+              - text: https://github.com/NSExceptional
+          - generic [ref=e35]:
+            - link "Publisher's linkedin account link" [ref=e37] [cursor=pointer]:
+              - /url: https://www.linkedin.com/in/objc/
+              - img "Publisher's linkedin account link" [ref=e38]
+            - link "Publisher's source code account link" [ref=e40] [cursor=pointer]:
+              - /url: https://github.com/NSExceptional
+              - img "Publisher's source code account link" [ref=e41]
+            - link "Publisher's twitter account link" [ref=e43] [cursor=pointer]:
+              - /url: https://twitter.com/NSExceptional
+              - img "Publisher's twitter account link" [ref=e44]
+        - generic [ref=e46]:
+          - tablist [ref=e49]:
+            - tab "Visual Studio Code" [selected] [ref=e50] [cursor=pointer]
+          - tabpanel [ref=e54]:
+            - generic [ref=e55]:
+              - generic:
+                - list:
+                  - listitem:
+                    - list [ref=e56]:
+                      - listitem [ref=e57]:
+                        - 'link "Extension Objective-Clean by tannerbennettpublisher 2K with install count Average rating: 0.0 out of 5 FREE and is of category." [ref=e58] [cursor=pointer]':
+                          - /url: /items?itemName=objc.objective-clean
+                          - generic "Objective-Clean" [ref=e59]:
+                            - generic [ref=e60]:
+                              - generic "Migrate crusty Objective-C code to modern paradigms such as collection literals." [ref=e61]
+                              - generic [ref=e63]:
+                                - generic "Migrate crusty Objective-C code to modern paradigms such as collection literals." [ref=e65]: Objective-Clean
+                                - generic [ref=e67]:
+                                  - generic [ref=e68]:
+                                    - generic [aria-hidden] [ref=e69]: 
+                                    - text: 2K
+                                  - generic [ref=e70]: tannerbennett
+                            - generic "Migrate crusty Objective-C code to modern paradigms such as collection literals." [ref=e73]
+                            - generic [ref=e74]:
+                              - generic [ref=e77]:
+                                - generic [aria-hidden] [ref=e80]: 
+                                - generic [aria-hidden] [ref=e83]: 
+                                - generic [aria-hidden] [ref=e86]: 
+                                - generic [aria-hidden] [ref=e89]: 
+                                - generic [aria-hidden] [ref=e92]: 
+                              - generic "FREE" [ref=e93]
+    - contentinfo [ref=e95]:
+      - contentinfo [ref=e96]:
+        - generic [ref=e97]:
+          - list [ref=e100]:
+            - listitem [ref=e101]:
+              - link "Contact us" [ref=e102] [cursor=pointer]:
+                - /url: https://www.visualstudio.com/support/support-overview-vs
+            - listitem [ref=e103]:
+              - link "Jobs" [ref=e104] [cursor=pointer]:
+                - /url: https://careers.microsoft.com/
+            - listitem [ref=e105]:
+              - link "Privacy" [ref=e106] [cursor=pointer]:
+                - /url: https://go.microsoft.com/fwlink/?LinkID=521839
+            - listitem [ref=e107]:
+              - link "Terms of use" [ref=e108] [cursor=pointer]:
+                - /url: https://aka.ms/vsmarketplace-ToU
+            - listitem [ref=e109]:
+              - link "Trademarks" [ref=e110] [cursor=pointer]:
+                - /url: https://www.microsoft.com/trademarks
+            - listitem [ref=e111]:
+              - link "Your Privacy Choices" [ref=e112] [cursor=pointer]:
+                - /url: https://aka.ms/YourCaliforniaPrivacyChoices
+            - listitem [ref=e113]:
+              - link "Consumer Health Privacy" [ref=e114] [cursor=pointer]:
+                - /url: https://go.microsoft.com/fwlink/?linkid=2259814
+          - generic [ref=e115]:
+            - text: © 2026 Microsoft
+            - generic "Microsoft" [ref=e116]
+  - paragraph [ref=e121]: Exited full-screen mode
