@@ -1,6 +1,6 @@
 //
 //  Created by Tanner Bennett on 26/08/24.
-//  Copyright © 2025 Tanner Bennett. All rights reserved.
+//  Copyright © 2025 Tanner Bennett.
 //
 
 import { EnvironmentCmd } from './environment-cmd';

@@ -1,6 +1,6 @@
 //
 //  Created by Tanner Bennett on 17/10/24.
-//  Copyright © 2025 Tanner Bennett. All rights reserved.
+//  Copyright © 2025 Tanner Bennett.
 //
 
 import * as fs from 'fs';

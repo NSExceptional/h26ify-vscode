@@ -3,7 +3,7 @@
  * H26ify
  *
  * Created by Tanner Bennett on 2025-09-01
- * Copyright © 2025 Tanner Bennett. All rights reserved.
+ * Copyright © 2025 Tanner Bennett.
  */
 
 import { CancellationToken } from 'vscode';

@@ -3,7 +3,7 @@
 //  H26ify
 //
 //  Created by Tanner Bennett on 2024-04-08
-//  Copyright © 2024 Tanner Bennett. All rights reserved.
+//  Copyright © 2024 Tanner Bennett.
 //
 
 import { ChildProcess, exec, spawn, SpawnOptions, SpawnOptionsWithoutStdio } from 'child_process';

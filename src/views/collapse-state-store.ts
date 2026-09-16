@@ -3,7 +3,7 @@
  * H26ify
  *
  * Created by GitHub Copilot on 2026-05-12
- * Copyright © 2025 Tanner Bennett. All rights reserved.
+ * Copyright © 2025 Tanner Bennett.
  */
 
 import * as vscode from 'vscode';

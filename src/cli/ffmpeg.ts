@@ -1,6 +1,6 @@
 //
 //  Created by GitHub Copilot on 2025-07-08.
-//  Copyright © 2025 Tanner Bennett. All rights reserved.
+//  Copyright © 2025 Tanner Bennett.
 //
 
 import { EnvironmentCmd } from './environment-cmd';

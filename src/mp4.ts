@@ -3,7 +3,7 @@
  * media
  *
  * Created by Tanner Bennett on 2025-04-19
- * Copyright © 2025 Tanner Bennett. All rights reserved.
+ * Copyright © 2025 Tanner Bennett.
  */
 
 import * as fs from 'fs';

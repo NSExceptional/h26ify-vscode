@@ -3,7 +3,7 @@
 //  H26ify
 //
 //  Created by Tanner Bennett on 2023-08-23
-//  Copyright © 2023 Tanner Bennett. All rights reserved.
+//  Copyright © 2023 Tanner Bennett.
 //
 
 import * as vscode from 'vscode';

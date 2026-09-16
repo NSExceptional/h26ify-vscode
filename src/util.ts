@@ -3,7 +3,7 @@
 //  Tweak Studio
 //
 //  Created by Tanner Bennett on 2021-06-27
-//  Copyright © 2021 Tanner Bennett. All rights reserved.
+//  Copyright © 2021 Tanner Bennett.
 //
 
 import * as vscode from 'vscode';
