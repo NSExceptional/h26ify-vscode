@@ -20,8 +20,7 @@ import { cmd, CommandRegistration, PackageJSONCommandEntry } from '../decorators
  * Commands defined in the base class are callable by subclasses.
  */
 export class Commands {
-    /**
-     * `Commands` subclasses annoted with `@Command` are added here
+    /** `Commands` subclasses annoted with `@Command` are added here
      * so that the extension can .init them all as the extension activates.
      */
     static commandsRegistry: Commands[] = [];
@@ -34,6 +33,8 @@ export class Commands {
     /** `contributes.commands` pulled from the extension's package.json */
     static contributedCommands: PackageJSONCommandEntry[] =
         vscode.extensions.getExtension('tanner.h26ify')?.packageJSON.contributes.commands ?? [];
+    /** The extension context, set by `init()` */
+    static context: ExtensionContext;
 
     /** Errors and other output are written to this extension's output channel */
     public get outputChannel() {
@@ -46,6 +47,7 @@ export class Commands {
 
     /** Called in extension.ts to register all commands; do not use */
     public static init(context: ExtensionContext) {
+        Commands.context = context;
         for (const [cmd, reg] of Object.entries(this.commandMap)) {
             context.subscriptions.push(commands.registerCommand(cmd, reg.finalInvocation));
         }

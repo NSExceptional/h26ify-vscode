@@ -13,6 +13,7 @@ import { CancellationToken } from 'vscode';
 import { QuickPick, QuickPickItem, QuickPickOptions, Uri } from 'vscode';
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
+import * as fs from 'fs';
 
 type QuickPickOptionsPro = QuickPickOptions & {
     mustPickSome?: boolean;
@@ -41,7 +42,7 @@ type SplitGetOptions<T> = {
 }
 
 export class Util {
-    
+
     public static testing = false;
     public static mockProgress: Progress | undefined = undefined;
 
@@ -49,13 +50,13 @@ export class Util {
     static sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
-    
+
     /**
      * Combines two cancellation tokens into one.
-     * 
+     *
      * The resulting token will be cancelled if either of the input tokens is cancelled.
      * If either token is already cancelled, the result will be cancelled immediately.
-     * 
+     *
      * Note that you cannot manually cancel a token, you can only observe cancellation.
      * This makes it easy to observe cancellation of two tokens at once.
      */
@@ -63,7 +64,7 @@ export class Util {
         if (!parent) {
             return child;
         }
-        
+
         // Create a new token that cancels when either input token cancels
         const combined = new vscode.CancellationTokenSource();
         // Cancelling the parent token will cancel all child operations
@@ -75,7 +76,7 @@ export class Util {
         if (parent.isCancellationRequested || child.isCancellationRequested) {
             combined.cancel();
         }
-        
+
         return combined.token;
     }
 
@@ -83,7 +84,7 @@ export class Util {
         if (this.testing && Util.mockProgress) {
             return await work(new vscode.CancellationTokenSource().token, Util.mockProgress);
         }
-        
+
         return await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: message,
@@ -167,13 +168,13 @@ export class Util {
         const dateString = date.toISOString().split('T')[0];
         return withTimestamp ? `${dateString}-${date.getTime()}` : dateString;
     }
-    
+
     static workspaceFolder(): vscode.WorkspaceFolder | undefined {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
             return undefined;
         }
-        
+
         return workspaceFolders[0];
     }
 
@@ -186,6 +187,16 @@ export class Util {
 
         const root = workspaceFolder.uri.fsPath;
         return Uri.file(path.join(root, relativeFilename));
+    }
+
+    static async fileExists(filePath: string): Promise<boolean> {
+        try {
+            let absolute = path.resolve(filePath);
+            await fs.promises.stat(absolute);
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     static async createOrReplaceFile(uri: Uri, content: string, openAfter?: boolean): Promise<void> {
@@ -245,6 +256,69 @@ export class Util {
 
         const buffer = await workspace.fs.readFile(uri);
         return buffer.toString();
+    }
+
+    static isSameFile(a: string, b: string): boolean {
+        // Remove filenames to avoid errors if file doesn't exist
+        const dirA = path.dirname(a);
+        const dirB = path.dirname(b);
+        const fileA = path.basename(a);
+        const fileB = path.basename(b);
+
+        // Resolve real paths for directories
+        const realDirA = fs.realpathSync(dirA);
+        const realDirB = fs.realpathSync(dirB);
+
+        // Compare full paths with filenames
+        const same = path.join(realDirA, fileA) === path.join(realDirB, fileB);
+        return same;
+    }
+
+    static filenameFromTemplate(inputFile: string, toFormat: string, pattern: string): string {
+        inputFile = fs.realpathSync(inputFile);
+        const dir = path.dirname(inputFile);
+        const oldExt = path.extname(inputFile);
+        const filename = path.basename(inputFile, oldExt);
+
+        // i.e. {filename}.{format}.{ext} -> foo.hevc.mp4
+        const outputFilename = pattern
+            .replace('{filename}', filename)
+            .replace('{format}', toFormat)
+            .replace('{old-ext}', oldExt)
+            .replace('{ext}', 'mp4');
+
+        if (outputFilename.includes('{') || outputFilename.includes('}')) {
+            throw new Error('Output pattern contains invalid or incomplete placeholders');
+        }
+
+        const outputFile = path.join(dir, outputFilename);
+        return outputFile;
+    }
+
+    /**
+     * Converts an array of file extensions to a glob pattern. For example, this:
+     * ```
+     * ['mp4', 'mov', 'avi']
+     * ```
+     * becomes this:
+     * ```
+     * '{mp4,mov,avi}'
+     * ```
+     * or this, when marked case-insensitive:
+     * ```
+     * '{mp4,mov,avi,MP4,MOV,AVI}'
+     * ```
+     * @param extensions The file extensions to include (without leading dot)
+     * @param caseSensitive Whether the glob pattern should be case-sensitive
+     * @returns A string like `'{mp4,mov,avi}'`
+     */
+    static toExtensionGlob(extensions: string[], caseSensitive = true): string {
+        if (!caseSensitive) {
+            extensions = extensions.map(e => e.toLowerCase());
+            extensions.push(...extensions.map(e => e.toUpperCase()));
+        }
+
+        return `{${extensions.join(',')}}`;
     }
 
     static lineOrSelectionInActiveEditor(): [string, vscode.Range] | undefined;

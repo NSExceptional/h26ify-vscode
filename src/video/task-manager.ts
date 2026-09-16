@@ -6,19 +6,9 @@
  * Copyright © 2025 Tanner Bennett. All rights reserved.
  */
 
-import * as vscode from 'vscode';
 import { CancellationToken } from 'vscode';
 import { Progress, Util } from '../util';
-
-interface Identifiable {
-    id: string;
-};
-
-export interface TranscodeTask extends Identifiable {
-    name: string;
-    operation: 'transcode' | 'recode';
-    work: (cancelToken: CancellationToken) => Promise<void>;
-};
+import { Identifiable, TranscodeTask } from './transcode-task';
 
 type OperationProgress = {
     /** The sum of the reported progress */
@@ -107,6 +97,8 @@ export default class TranscodeTaskManager {
         progress: undefined
     };
 
+    constructor(private onEachCompleted?: (task: TranscodeTask) => void) { }
+
     /** Total tasks so far, including incomplete */
     public get count(): number {
         return this.activeProgress.totalTasksSofar;
@@ -122,7 +114,7 @@ export default class TranscodeTaskManager {
     }
 
     private get progressMessage(): string {
-        return `${this.completedCount} of ${this.count}`;
+        return `${this.completedCount + 1} of ${this.count}`;
     }
 
     /** Update the progress notification to account for completed or added tasks */
@@ -179,6 +171,11 @@ export default class TranscodeTaskManager {
         await this.operation;
 
         // Reset the operation and progress after all tasks are completed
+        this.runCompleted();
+    }
+
+    private runCompleted() {
+        this.completedCount = 0;
         this.operation = undefined;
         this.activeProgress = {
             reported: 0,
@@ -190,8 +187,8 @@ export default class TranscodeTaskManager {
     private async runAll(batchCancelToken: CancellationToken, progress: Progress) {
         for (const task of this.tasks) {
             await this.runTaskWithProgress(task, batchCancelToken);
-            // this.completedCount++;
             this.updateProgress({ dequeued: 1 });
+            this.onEachCompleted?.(task);
         }
     }
 

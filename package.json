@@ -2,14 +2,39 @@
     "name": "h26ify",
     "publisher": "tanner",
     "displayName": "H26ify",
-    "description": "Utilities for managing and converting videos in a folder to h265",
-    "version": "0.0.1",
+    "description": "Identify, convert, and edit videos in your workspace — HEVC conversion plus trim, crop, and resize.",
+    "version": "0.1.0",
+    "license": "MIT",
+    "icon": "media/icon.png",
     "engines": {
         "vscode": "^1.100.0"
     },
     "categories": [
         "Other"
     ],
+    "keywords": [
+        "video",
+        "hevc",
+        "h265",
+        "ffmpeg",
+        "convert",
+        "transcode",
+        "trim",
+        "crop",
+        "resize"
+    ],
+    "galleryBanner": {
+        "color": "#1e1e1e",
+        "theme": "dark"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/NSExceptional/h26ify-vscode.git"
+    },
+    "bugs": {
+        "url": "https://github.com/NSExceptional/h26ify-vscode/issues"
+    },
+    "homepage": "https://github.com/NSExceptional/h26ify-vscode#readme",
     "activationEvents": [],
     "main": "./out/extension.js",
     "contributes": {
@@ -34,8 +59,33 @@
                 },
                 "h26ify.outputNamePattern": {
                     "type": "string",
-                    "default": "{filename}.hevc{extension}",
-                    "description": "Pattern for naming converted files. Use {filename} and {extension} as placeholders"
+                    "default": "{filename}.{format}.{ext}",
+                    "description": "Pattern for naming converted files. Use {filename}, {format}, {ext}, and {old-ext} as placeholders"
+                },
+                "h26ify.outputFileStrategy": {
+                    "type": "string",
+                    "enum": [
+                        "useOriginalName",
+                        "askForName",
+                        "useTemplate"
+                    ],
+                    "default": "useTemplate",
+                    "description": "How to determine the output filename: use original name, ask user for name, or use template pattern"
+                },
+                "h26ify.originalFileHandling": {
+                    "type": "string",
+                    "enum": [
+                        "doNothing",
+                        "trash",
+                        "delete"
+                    ],
+                    "default": "trash",
+                    "description": "What to do with the original file after conversion: leave in place, move to trash, or delete permanently"
+                },
+                "h26ify.overwriteExisting": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether to overwrite existing files that collide with the output filename"
                 }
             }
         },
@@ -45,7 +95,6 @@
                 "title": "Refresh Videos",
                 "icon": "$(refresh)",
                 "category": "H26ify",
-                "cancellable": true,
                 "progress": {
                     "view": "h26ify.videos"
                 }
@@ -73,6 +122,31 @@
                 "title": "Reduce All File Sizes",
                 "icon": "$(filter)",
                 "category": "H26ify"
+            },
+            {
+                "command": "h26ify.editVideo",
+                "title": "Edit Video…",
+                "icon": "$(edit)",
+                "category": "H26ify"
+            },
+            {
+                "command": "h26ify.editSelectedVideos",
+                "title": "Edit Selected Videos…",
+                "icon": "$(edit)",
+                "category": "H26ify",
+                "isMultiSelect": true
+            },
+            {
+                "command": "h26ify.editSelectionFromView",
+                "title": "Edit Selected Videos…",
+                "icon": "$(edit)",
+                "category": "H26ify"
+            },
+            {
+                "command": "h26ify.revealInFinder",
+                "title": "Reveal in Finder",
+                "icon": "$(folder-opened)",
+                "category": "H26ify"
             }
         ],
         "views": {
@@ -88,12 +162,22 @@
         "menus": {
             "view/title": [
                 {
+                    "command": "h26ify.editSelectionFromView",
+                    "when": "view == h26ify.videos",
+                    "group": "navigation@1"
+                },
+                {
                     "command": "h26ify.refreshVideos",
                     "when": "view == h26ify.videos",
-                    "group": "navigation"
+                    "group": "navigation@2"
                 }
             ],
             "view/item/context": [
+                {
+                    "command": "h26ify.revealInFinder",
+                    "when": "viewItem == video || viewItem == video-hevc",
+                    "group": "inline@0"
+                },
                 {
                     "command": "h26ify.convertToHEVC",
                     "when": "viewItem == video",
@@ -113,6 +197,16 @@
                     "command": "h26ify.recodeAll",
                     "when": "viewItem == category-hevc",
                     "group": "inline"
+                },
+                {
+                    "command": "h26ify.editVideo",
+                    "when": "viewItem == video || viewItem == video-hevc",
+                    "group": "1_edit@1"
+                },
+                {
+                    "command": "h26ify.editSelectedVideos",
+                    "when": "viewItem == video || viewItem == video-hevc",
+                    "group": "1_edit@2"
                 }
             ]
         }

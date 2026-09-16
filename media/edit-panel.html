@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Video</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 12px 16px 16px;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+  }
+
+  .content { max-width: 920px; margin: 0 auto; }
+
+  /* ---- Preset bar ---- */
+  .preset-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .preset-bar label { color: var(--vscode-descriptionForeground); }
+  .preset-bar select {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    padding: 3px 6px;
+    border-radius: 4px;
+    min-width: 200px;
+  }
+
+  /* ---- File list ---- */
+  .file-list {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--vscode-sideBarSectionHeader-background, var(--vscode-editorWidget-background));
+    border-top: 1px solid var(--vscode-panel-border);
+  }
+  .file-row:first-child { border-top: none; }
+  .file-row svg { flex: none; color: var(--vscode-charts-blue, #7bb3e0); }
+  .file-row .fname { color: var(--vscode-foreground); font-weight: 500; }
+  .file-row .spacer { flex: 1; }
+  .file-row .fmeta { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+  .file-row .fdivider { width: 1px; height: 12px; background: var(--vscode-panel-border); }
+
+  /* ---- Section ---- */
+  .section {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 5px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    background: var(--vscode-sideBarSectionHeader-background, var(--vscode-editorWidget-background));
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .section-header:hover { background: var(--vscode-list-hoverBackground); }
+  .section-header input[type=checkbox] { cursor: pointer; accent-color: var(--vscode-focusBorder); margin: 0; }
+  .section-title { font-weight: 600; }
+  .section-summary {
+    margin-left: auto;
+    color: var(--vscode-descriptionForeground);
+    font-variant-numeric: tabular-nums;
+  }
+  .section-chevron {
+    display: flex;
+    width: 16px;
+    justify-content: center;
+    color: var(--vscode-descriptionForeground);
+    transition: transform 0.12s ease;
+    font-size: 0.9em;
+    user-select: none;
+  }
+  .section.expanded .section-chevron { transform: rotate(90deg); }
+  .section-body { padding: 4px 16px 18px 38px; display: none; }
+  .section.expanded .section-body { display: block; }
+
+  /* ---- Trim (filmstrip) ---- */
+  .trim-ruler {
+    display: flex;
+    justify-content: space-between;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 4px;
+  }
+  .trim-track {
+    position: relative;
+    height: 52px;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid var(--vscode-panel-border);
+    background-image:
+      repeating-linear-gradient(90deg, rgba(127,127,127,.16) 0, rgba(127,127,127,.16) 1px, transparent 1px, transparent 20%),
+      repeating-linear-gradient(-45deg, rgba(127,127,127,.10) 0, rgba(127,127,127,.10) 6px, transparent 6px, transparent 12px);
+  }
+  .trim-dim { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.55); pointer-events: none; }
+  .trim-dim.left { left: 0; }
+  .trim-dim.right { right: 0; }
+  .trim-selection {
+    position: absolute; top: 0; bottom: 0;
+    border-top: 2px solid var(--vscode-focusBorder);
+    border-bottom: 2px solid var(--vscode-focusBorder);
+    pointer-events: none;
+  }
+  .trim-handle {
+    position: absolute; top: 0; bottom: 0;
+    width: 10px; margin-left: -5px;
+    background: var(--vscode-focusBorder);
+    cursor: ew-resize;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 2px;
+    z-index: 2;
+    touch-action: none;
+  }
+  .trim-handle .grip { width: 2px; height: 16px; background: rgba(255,255,255,.75); border-radius: 1px; }
+  .trim-inputs { display: flex; gap: 18px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  .trim-inputs label { display: flex; align-items: center; gap: 8px; }
+  .trim-inputs .sel { margin-left: auto; color: var(--vscode-descriptionForeground); }
+  .trim-inputs .sel b { color: var(--vscode-foreground); font-variant-numeric: tabular-nums; }
+
+  /* ---- Crop carousel ---- */
+  .carousel {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    margin-bottom: 10px;
+  }
+  .carousel-item {
+    flex: 0 0 auto;
+    width: 104px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    padding: 2px;
+    background: var(--vscode-list-inactiveSelectionBackground);
+  }
+  .carousel-item.active { border-color: var(--vscode-focusBorder); }
+  .carousel-item img {
+    display: block;
+    width: 100%;
+    height: 58px;
+    object-fit: cover;
+    background: #000;
+    border-radius: 2px;
+  }
+  .carousel-item .cap {
+    display: block;
+    font-size: 0.78em;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+  .carousel-item .dim { font-size: 0.72em; color: var(--vscode-descriptionForeground); opacity: 0.8; }
+
+  /* ---- Warning / info banner ---- */
+  .warning {
+    font-size: 0.85em;
+    line-height: 1.35;
+    padding: 6px 9px;
+    border-radius: 3px;
+    margin-bottom: 10px;
+    background: var(--vscode-inputValidation-warningBackground, rgba(255,196,0,0.12));
+    border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(255,196,0,0.4));
+    color: var(--vscode-foreground);
+  }
+
+  /* ---- Crop mode selector ---- */
+  .mode-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+  .mode-bar .mode-btn { font-size: 0.9em; }
+
+  /* ---- Crop ---- */
+  .crop-frame-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    margin-bottom: 8px;
+    cursor: crosshair;
+    line-height: 0;
+  }
+  .crop-frame-container.no-draw { cursor: default; }
+  .crop-frame-container img { display: block; max-width: 100%; max-height: 360px; background: #000; }
+  .crop-frame-container canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .crop-inputs { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .crop-inputs label { display: flex; align-items: center; gap: 5px; }
+  .crop-inputs .lock-btn { margin-left: 4px; }
+
+  /* ---- Scrubber ---- */
+  .scrub-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .scrub-row input[type=range] { flex: 1; margin: 0; }
+  .scrub-row .scrub-time {
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-descriptionForeground);
+    min-width: 48px;
+    text-align: right;
+  }
+
+  /* ---- Aspect controls ---- */
+  .aspect-controls { display: flex; flex-direction: column; gap: 10px; }
+  .aspect-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .aspect-row label { color: var(--vscode-descriptionForeground); }
+  .aspect-controls select {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    padding: 3px 6px;
+    border-radius: 2px;
+  }
+  .anchor-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 26px);
+    grid-template-rows: repeat(3, 26px);
+    gap: 3px;
+  }
+  .anchor-grid button {
+    padding: 0;
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ---- Insets controls ---- */
+  .insets-grid { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .insets-grid label { display: flex; align-items: center; gap: 5px; }
+
+  /* ---- Resize ---- */
+  .resize-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .resize-inputs { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .resize-inputs label { display: flex; align-items: center; gap: 5px; }
+
+  /* ---- Shared input styles ---- */
+  input[type=number], input[type=text] {
+    width: 72px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    padding: 3px 6px;
+    border-radius: 2px;
+    font-size: inherit;
+    font-family: inherit;
+  }
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--vscode-focusBorder);
+    margin-bottom: 8px;
+  }
+
+  button {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    padding: 4px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: inherit;
+    font-family: inherit;
+  }
+  button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button.primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+  }
+  button.primary:hover { background: var(--vscode-button-hoverBackground); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary:disabled:hover { background: var(--vscode-button-background); }
+  button.active {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    outline: 1px solid var(--vscode-focusBorder);
+  }
+
+  /* ---- Footer ---- */
+  .footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+  }
+  .footer .status { color: var(--vscode-descriptionForeground); }
+  .footer .spacer { flex: 1; }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="content">
+
+<!-- Preset bar -->
+<div class="preset-bar">
+  <label for="preset-select">Preset</label>
+  <select id="preset-select"><option value="">— None —</option></select>
+  <button id="save-preset-btn">Save as preset…</button>
+  <button id="delete-preset-btn" class="hidden">Delete</button>
+</div>
+
+<!-- Selected video list -->
+<div class="file-list hidden" id="batch-list"></div>
+
+<!-- ===== TRIM ===== -->
+<div class="section" id="trim-section">
+  <div class="section-header">
+    <span class="section-chevron" aria-hidden="true">❯</span>
+    <input type="checkbox" id="trim-enabled" title="Enable trim">
+    <span class="section-title">Trim</span>
+    <span class="section-summary" id="trim-summary"></span>
+  </div>
+  <div class="section-body" id="trim-body">
+    <div class="trim-ruler" id="trim-ruler"></div>
+    <div class="trim-track" id="trim-track">
+      <div class="trim-dim left" id="trim-dim-left"></div>
+      <div class="trim-dim right" id="trim-dim-right"></div>
+      <div class="trim-selection" id="trim-selection"></div>
+      <div class="trim-handle" id="handle-start" title="Start"><span class="grip"></span></div>
+      <div class="trim-handle" id="handle-end" title="End"><span class="grip"></span></div>
+    </div>
+    <div class="trim-inputs">
+      <label><span>Start</span> <input type="text" id="trim-start" placeholder="0:00"></label>
+      <label><span>End</span> <input type="text" id="trim-end" placeholder="0:00"></label>
+      <span class="sel">Selected <b id="trim-selected">0:00</b></span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CROP ===== -->
+<div class="section" id="crop-section">
+  <div class="section-header">
+    <span class="section-chevron" aria-hidden="true">❯</span>
+    <input type="checkbox" id="crop-enabled" title="Enable crop">
+    <span class="section-title">Crop</span>
+    <span class="section-summary" id="crop-summary"></span>
+  </div>
+  <div class="section-body" id="crop-body">
+
+    <!-- Per-video thumbnail carousel (batch only) -->
+    <div class="carousel hidden" id="crop-carousel"></div>
+
+    <!-- Resolution warning / info (batch, mixed resolutions) -->
+    <div class="warning hidden" id="crop-warning"></div>
+
+    <!-- Crop mode selector (batch only) -->
+    <div class="mode-bar hidden" id="crop-mode-bar">
+      <button class="mode-btn" data-mode="percent" title="Crop scales proportionally to each video">Percentage</button>
+      <button class="mode-btn" data-mode="absolute" title="Fixed pixel rect, clamped per video">Absolute</button>
+      <button class="mode-btn" data-mode="aspect" title="Largest rect of a target aspect ratio, anchored">Aspect Ratio</button>
+      <button class="mode-btn" data-mode="insets" title="Trim margins off each edge">Insets</button>
+    </div>
+
+    <!-- Preview canvas -->
+    <div class="crop-frame-container" id="crop-container">
+      <img id="video-frame" alt="Video frame">
+      <canvas id="crop-canvas"></canvas>
+    </div>
+
+    <!-- Frame scrubber -->
+    <div class="scrub-row" id="scrub-row">
+      <input type="range" id="scrub-slider" min="0" max="1000" value="0" step="1" title="Scrub to a frame">
+      <span class="scrub-time" id="scrub-time">0:00</span>
+    </div>
+
+    <!-- Rect editor (percent / absolute) -->
+    <div class="crop-inputs" id="crop-rect-inputs">
+      <label>W <input type="number" id="crop-w" min="2"></label>
+      <label>H <input type="number" id="crop-h" min="2"></label>
+      <label>X <input type="number" id="crop-x" min="0"></label>
+      <label>Y <input type="number" id="crop-y" min="0"></label>
+      <button id="crop-lock-btn" class="lock-btn" title="Lock aspect ratio">🔓</button>
+    </div>
+
+    <!-- Aspect-ratio editor -->
+    <div class="aspect-controls hidden" id="crop-aspect-controls">
+      <div class="aspect-row">
+        <label for="crop-ratio">Ratio</label>
+        <select id="crop-ratio">
+          <option value="16:9">16:9</option>
+          <option value="9:16">9:16</option>
+          <option value="4:3">4:3</option>
+          <option value="3:2">3:2</option>
+          <option value="21:9">21:9</option>
+          <option value="1:1">1:1</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <span id="crop-ratio-custom" class="hidden">
+          <input type="number" id="crop-ratio-w" min="1" value="16" style="width:56px">
+          :
+          <input type="number" id="crop-ratio-h" min="1" value="9" style="width:56px">
+        </span>
+      </div>
+      <div class="aspect-row">
+        <label>Anchor</label>
+        <div class="anchor-grid" id="crop-anchor-grid">
+          <button data-anchor="nw" title="Top-left">↖</button>
+          <button data-anchor="n"  title="Top">↑</button>
+          <button data-anchor="ne" title="Top-right">↗</button>
+          <button data-anchor="w"  title="Left">←</button>
+          <button data-anchor="center" title="Center">●</button>
+          <button data-anchor="e"  title="Right">→</button>
+          <button data-anchor="sw" title="Bottom-left">↙</button>
+          <button data-anchor="s"  title="Bottom">↓</button>
+          <button data-anchor="se" title="Bottom-right">↘</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Insets editor -->
+    <div class="insets-grid hidden" id="crop-insets-controls">
+      <label>Top <input type="number" id="crop-inset-top" min="0"></label>
+      <label>Right <input type="number" id="crop-inset-right" min="0"></label>
+      <label>Bottom <input type="number" id="crop-inset-bottom" min="0"></label>
+      <label>Left <input type="number" id="crop-inset-left" min="0"></label>
+      <button id="crop-inset-unit" title="Toggle percent / pixels">%</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RESIZE ===== -->
+<div class="section" id="resize-section">
+  <div class="section-header">
+    <span class="section-chevron" aria-hidden="true">❯</span>
+    <input type="checkbox" id="resize-enabled" title="Enable resize">
+    <span class="section-title">Resize</span>
+    <span class="section-summary" id="resize-summary"></span>
+  </div>
+  <div class="section-body" id="resize-body">
+    <div class="resize-presets">
+      <button class="preset-btn" data-scale="0.25">25%</button>
+      <button class="preset-btn" data-scale="0.5">50%</button>
+      <button class="preset-btn" data-scale="0.75">75%</button>
+      <button class="preset-btn" data-w="1280" data-h="720">720p</button>
+      <button class="preset-btn" data-w="1920" data-h="1080">1080p</button>
+      <button class="preset-btn" data-w="3840" data-h="2160">4K</button>
+    </div>
+    <input type="range" id="resize-slider" min="10" max="200" value="100">
+    <div class="resize-inputs">
+      <label>W <input type="number" id="resize-w" min="1"></label>
+      <label>H <input type="number" id="resize-h" min="1"></label>
+      <button id="resize-lock-btn" class="lock-btn" title="Lock aspect ratio">🔒</button>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <span class="status" id="footer-status">No changes selected</span>
+  <span class="spacer"></span>
+  <button id="cancel-btn">Cancel</button>
+  <button id="apply-btn" class="primary">Apply</button>
+</div>
+
+</div><!-- .content -->
+
+<script nonce="{{NONCE}}">
+(function() {
+  const vscode = acquireVsCodeApi();
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let videos = [];            // [{ path, filename, width, height, duration }]
+  let refIndex = 0;           // index of the video shown in the preview
+  let isBatch = false;
+  let resolutionsMatch = true;
+  let batchDurationsMatch = false;
+
+  let videoWidth = 1920, videoHeight = 1080, videoDuration = 60; // reference video
+  let resizeAspectLocked = true, resizeAspect = 16/9;
+  let cropAspectLocked = false, cropAspect = 16/9;
+
+  // Crop mode + canonical (resolution-independent) params. `cropRect` is derived
+  // from these for the *reference* video; per-video rects are computed at apply time.
+  let cropMode = 'percent';
+  const cropParams = {
+    percent:  { fx: 0, fy: 0, fw: 1, fh: 1 },          // fractions of each video
+    absolute: { x: 0, y: 0, w: 0, h: 0 },              // literal pixels, clamped
+    insets:   { t: 0, r: 0, b: 0, l: 0, unit: 'percent' }, // per-edge margins
+    aspect:   { rw: 16, rh: 9, anchor: 'center' },     // target ratio + anchor
+  };
+
+  // Crop canvas state
+  let cropCanvas, cropCtx, cropImg;
+  let canvasW = 0, canvasH = 0;   // displayed canvas dimensions
+  let scaleX = 1, scaleY = 1;     // video px per canvas px (for the reference video)
+  let cropRect = { x: 0, y: 0, w: 1920, h: 1080 }; // derived, in reference-video px
+  let dragState = null;
+  const HANDLE_SIZE = 8;
+
+  // Scrubber
+  let scrubTime = 0;
+  let scrubTimer = null;
+
+  // Trim state (seconds)
+  let trimStart = 0, trimEnd = 60;
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const els = id => document.getElementById(id);
+
+  // ── Section collapse / enable ─────────────────────────────────────────────
+  // Clicking the bar collapses/expands the section; the checkbox enables the
+  // operation (and expands the section when it becomes enabled).
+  document.querySelectorAll('.section-header').forEach(header => {
+    const section = header.closest('.section');
+    const cb = header.querySelector('input[type=checkbox]');
+    header.addEventListener('click', e => {
+      if (e.target === cb) { return; }  // checkbox handles its own toggle
+      if (!cb.checked) {
+        cb.checked = true;              // first click enables + expands
+        section.classList.add('expanded');
+      } else {
+        section.classList.toggle('expanded'); // later clicks collapse/expand
+      }
+      refreshAll();
+    });
+    cb.addEventListener('change', () => {
+      // The checkbox is the only way to disable — and that collapses the section
+      section.classList.toggle('expanded', cb.checked);
+      refreshAll();
+    });
+  });
+
+  // ── Frame extraction plumbing (carousel thumbs + scrubbing) ───────────────
+  let _frameSeq = 0;
+  const _frameCbs = {};
+  const _frameCache = {};
+  function requestFrame(path, atSeconds) {
+    const key = path + '@' + Number(atSeconds).toFixed(1);
+    if (_frameCache[key]) { return Promise.resolve(_frameCache[key]); }
+    const reqId = ++_frameSeq;
+    return new Promise(resolve => {
+      _frameCbs[reqId] = uri => {
+        if (uri) { _frameCache[key] = uri; }
+        resolve(uri);
+      };
+      vscode.postMessage({ type: 'requestFrame', reqId, path, atSeconds });
+    });
+  }
+
+  // ── Init from extension message ───────────────────────────────────────────
+  window.addEventListener('message', event => {
+    const msg = event.data;
+    if (msg.type === 'init') { handleInit(msg); }
+    else if (msg.type === 'loadPreset') { applyPreset(msg.preset); }
+    else if (msg.type === 'frame') {
+      const cb = _frameCbs[msg.reqId];
+      if (cb) { delete _frameCbs[msg.reqId]; cb(msg.dataUri); }
+    }
+  });
+
+  function refVideo() { return videos[refIndex] || { width: videoWidth, height: videoHeight, duration: videoDuration }; }
+
+  function setReference(index) {
+    refIndex = Math.max(0, Math.min(index, videos.length - 1));
+    const v = refVideo();
+    videoWidth = v.width || 1920;
+    videoHeight = v.height || 1080;
+    videoDuration = v.duration || 0;
+    // Keep scrub time within the new video's duration
+    if (scrubTime > videoDuration) { scrubTime = 0; }
+    els('scrub-time').textContent = formatTime(scrubTime);
+  }
+
+  function handleInit(msg) {
+    isBatch = !!msg.isBatch;
+    videos = (msg.videos || []).map(v => ({ ...v }));
+    if (videos.length === 0) { videos = [{ path: '', filename: 'Video', width: 1920, height: 1080, duration: 60 }]; }
+    resolutionsMatch = !!msg.resolutionsMatch;
+
+    setReference(0);
+
+    // Selected-video list (shown for one file or many)
+    buildFileList();
+
+    const durations = videos.map(v => v.duration);
+    batchDurationsMatch = (Math.max(...durations) - Math.min(...durations)) <= 1;
+
+    if (isBatch) {
+      if (!batchDurationsMatch) { els('trim-section').classList.add('hidden'); }
+      // Crop batch affordances
+      els('crop-mode-bar').classList.remove('hidden');
+      buildCarousel();
+    } else {
+      cropMode = 'absolute'; // single video: rect is just literal pixels
+    }
+
+    // Presets
+    populatePresets(msg.presets || {});
+
+    // Trim
+    trimStart = 0;
+    trimEnd = videoDuration;
+    initTrim();
+
+    // Crop defaults → full frame
+    resetCropToFull();
+
+    // Scrubber
+    setupScrubber();
+    loadReferenceFrame();
+
+    // Crop canvas (attach once)
+    initCropCanvas(els('video-frame'));
+    updateModeUI();
+
+    // Resize
+    resizeAspect = videoWidth / videoHeight;
+    els('resize-w').value = videoWidth;
+    els('resize-h').value = videoHeight;
+    els('resize-slider').value = 100;
+
+    refreshAll();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  // ── Selected-video list ─────────────────────────────────────────────────────
+  function buildFileList() {
+    const list = els('batch-list');
+    list.classList.remove('hidden');
+    list.innerHTML = '';
+    const icon = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M7 6.2 10 8 7 9.8V6.2Z" fill="currentColor"/></svg>';
+    videos.forEach(v => {
+      const row = document.createElement('div');
+      row.className = 'file-row';
+      row.innerHTML = icon
+        + '<span class="fname"></span><span class="spacer"></span>'
+        + '<span class="fmeta fdims"></span><span class="fdivider"></span><span class="fmeta fdur"></span>';
+      row.querySelector('.fname').textContent = v.filename;
+      row.querySelector('.fdims').textContent = `${v.width}×${v.height}`;
+      row.querySelector('.fdur').textContent = formatTime(v.duration);
+      list.appendChild(row);
+    });
+  }
+
+  // ── Section summaries + footer ──────────────────────────────────────────────
+  function updateTrimSummary() {
+    els('trim-summary').textContent = els('trim-enabled').checked
+      ? `${formatTime(trimStart)} – ${formatTime(trimEnd)}` : '';
+  }
+  function updateCropSummary() {
+    let txt = '';
+    if (els('crop-enabled').checked) {
+      const r = rectForVideo(videoWidth, videoHeight);
+      const label = cropMode === 'aspect'
+        ? `${cropParams.aspect.rw}:${cropParams.aspect.rh}`
+        : { percent: '%', absolute: 'px', insets: 'insets' }[cropMode];
+      txt = `${label} · ${r.w}×${r.h}`;
+    }
+    els('crop-summary').textContent = txt;
+  }
+  function updateResizeSummary() {
+    els('resize-summary').textContent = els('resize-enabled').checked
+      ? `${els('resize-w').value}×${els('resize-h').value}` : '';
+  }
+  function updateFooter() {
+    const n = ['trim-enabled', 'crop-enabled', 'resize-enabled'].filter(id => els(id).checked).length;
+    els('footer-status').textContent = n === 0 ? 'No changes selected' : `${n} change${n > 1 ? 's' : ''} selected`;
+    els('apply-btn').textContent = videos.length > 1 ? `Apply to ${videos.length} videos` : 'Apply';
+    els('apply-btn').disabled = n === 0;
+  }
+  function refreshAll() { updateTrimSummary(); updateCropSummary(); updateResizeSummary(); updateFooter(); }
+
+  // ── Carousel ──────────────────────────────────────────────────────────────
+  function buildCarousel() {
+    const strip = els('crop-carousel');
+    strip.classList.remove('hidden');
+    strip.innerHTML = '';
+    videos.forEach((v, i) => {
+      const item = document.createElement('div');
+      item.className = 'carousel-item' + (i === refIndex ? ' active' : '');
+      item.dataset.index = String(i);
+      const img = document.createElement('img');
+      const cap = document.createElement('span');
+      cap.className = 'cap';
+      cap.textContent = v.filename;
+      const dim = document.createElement('span');
+      dim.className = 'dim';
+      dim.textContent = `${v.width}×${v.height}`;
+      item.appendChild(img);
+      item.appendChild(cap);
+      item.appendChild(dim);
+      item.addEventListener('click', () => selectReference(i));
+      strip.appendChild(item);
+
+      // Lazily load a representative thumbnail
+      const at = Math.min(3, (v.duration || 0) / 2);
+      requestFrame(v.path, at).then(uri => { if (uri) { img.src = uri; } });
+    });
+  }
+
+  function selectReference(i) {
+    setReference(i);
+    // Rebuild the reference-pixel rect from the (stable) canonical params
+    cropRect = rectForVideo(videoWidth, videoHeight);
+    document.querySelectorAll('.carousel-item').forEach(el => {
+      el.classList.toggle('active', Number(el.dataset.index) === refIndex);
+    });
+    els('scrub-slider').max = String(Math.max(1, Math.round(videoDuration)));
+    els('scrub-slider').value = String(Math.round(scrubTime));
+    refreshCropInputs();
+    loadReferenceFrame();
+    syncCanvasSize();
+  }
+
+  // ── Presets ───────────────────────────────────────────────────────────────
+  function populatePresets(presets) {
+    _presets = presets || {};
+    const sel = els('preset-select');
+    sel.innerHTML = '<option value="">— None —</option>';
+    Object.keys(_presets).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+  }
+
+  let _presets = {};
+  els('preset-select').addEventListener('change', () => {
+    const name = els('preset-select').value;
+    els('delete-preset-btn').classList.toggle('hidden', !name);
+    if (name && _presets[name]) { applyPreset(_presets[name]); }
+  });
+
+  function applyPreset(preset) {
+    if (preset.trim && (!isBatch || batchDurationsMatch)) {
+      els('trim-enabled').checked = true;
+      els('trim-section').classList.add('expanded');
+      trimStart = preset.trim.start;
+      trimEnd = preset.trim.end;
+      updateTrimUI();
+    }
+    if (preset.crop) {
+      els('crop-enabled').checked = true;
+      els('crop-section').classList.add('expanded');
+      const c = preset.crop;
+      if (c.mode && cropParams[c.mode]) {
+        cropMode = isBatch ? c.mode : 'absolute';
+        Object.assign(cropParams[c.mode], c.params || {});
+        // If a single-video preset was authored in a scaling mode, keep its
+        // proportional intent by converting to absolute for this one video.
+        if (!isBatch && c.mode !== 'absolute') {
+          const r = rectForModeParams(c.mode, cropParams[c.mode], videoWidth, videoHeight);
+          cropParams.absolute = { x: r.x, y: r.y, w: r.w, h: r.h };
+        }
+      } else if (typeof c.x === 'number') {
+        // Legacy absolute preset
+        cropMode = 'absolute';
+        cropParams.absolute = { x: c.x, y: c.y, w: c.width, h: c.height };
+      }
+      cropRect = rectForVideo(videoWidth, videoHeight);
+      updateModeUI();
+    }
+    if (preset.resize) {
+      els('resize-enabled').checked = true;
+      els('resize-section').classList.add('expanded');
+      els('resize-w').value = preset.resize.width;
+      els('resize-h').value = preset.resize.height;
+      syncSliderFromDimensions();
+    }
+    refreshAll();
+  }
+
+  els('save-preset-btn').addEventListener('click', () => {
+    const name = prompt('Preset name:');
+    if (!name) { return; }
+    const preset = buildPreset();
+    preset.name = name;
+    vscode.postMessage({ type: 'savePreset', preset });
+    _presets[name] = preset;
+    const sel = els('preset-select');
+    const existing = sel.querySelector(`option[value="${CSS.escape(name)}"]`);
+    if (!existing) {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    sel.value = name;
+    els('delete-preset-btn').classList.remove('hidden');
+  });
+
+  els('delete-preset-btn').addEventListener('click', () => {
+    const name = els('preset-select').value;
+    if (!name) { return; }
+    vscode.postMessage({ type: 'deletePreset', name });
+    delete _presets[name];
+    const opt = els('preset-select').querySelector(`option[value="${CSS.escape(name)}"]`);
+    if (opt) { opt.remove(); }
+    els('preset-select').value = '';
+    els('delete-preset-btn').classList.add('hidden');
+  });
+
+  // ── Trim (filmstrip control) ────────────────────────────────────────────────
+  function initTrim() {
+    buildRuler();
+    updateTrimUI();
+    setupTrimDrag();
+  }
+
+  function buildRuler() {
+    const N = 5; // 6 evenly spaced labels
+    let html = '';
+    for (let i = 0; i <= N; i++) { html += `<span>${formatTime(videoDuration * i / N)}</span>`; }
+    els('trim-ruler').innerHTML = html;
+  }
+
+  function trimPct(seconds) { return videoDuration > 0 ? (seconds / videoDuration) * 100 : 0; }
+
+  function updateTrimUI() {
+    const sp = trimPct(trimStart), ep = trimPct(trimEnd);
+    els('trim-dim-left').style.width = sp + '%';
+    els('trim-dim-right').style.left = ep + '%';
+    els('trim-selection').style.left = sp + '%';
+    els('trim-selection').style.right = (100 - ep) + '%';
+    els('handle-start').style.left = sp + '%';
+    els('handle-end').style.left = ep + '%';
+    updateTrimInputs();
+    els('trim-selected').textContent = formatTime(trimEnd - trimStart);
+    updateTrimSummary();
+  }
+
+  function updateTrimInputs() {
+    els('trim-start').value = formatTime(trimStart);
+    els('trim-end').value = formatTime(trimEnd);
+  }
+
+  function ensureTrimEnabled() {
+    if (!els('trim-enabled').checked) {
+      els('trim-enabled').checked = true;
+      els('trim-section').classList.add('expanded');
+      updateFooter();
+    }
+  }
+
+  function setupTrimDrag() {
+    const track = els('trim-track');
+    let dragging = null;
+
+    const pctFromX = clientX => {
+      const r = track.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    };
+    const applyDrag = clientX => {
+      const t = pctFromX(clientX) * videoDuration;
+      if (dragging === 'start') { trimStart = Math.min(t, trimEnd - 0.1); }
+      else { trimEnd = Math.max(t, trimStart + 0.1); }
+      updateTrimUI();
+    };
+
+    track.addEventListener('pointerdown', e => {
+      const t = pctFromX(e.clientX) * videoDuration;
+      dragging = Math.abs(t - trimStart) < Math.abs(t - trimEnd) ? 'start' : 'end';
+      ensureTrimEnabled();
+      applyDrag(e.clientX);
+      e.preventDefault();
+    });
+    els('handle-start').addEventListener('pointerdown', e => { e.stopPropagation(); dragging = 'start'; ensureTrimEnabled(); e.preventDefault(); });
+    els('handle-end').addEventListener('pointerdown', e => { e.stopPropagation(); dragging = 'end'; ensureTrimEnabled(); e.preventDefault(); });
+    window.addEventListener('pointermove', e => { if (dragging) { applyDrag(e.clientX); } });
+    window.addEventListener('pointerup', () => { dragging = null; });
+  }
+
+  function parseTime(str) {
+    str = str.trim();
+    const parts = str.split(':').map(Number);
+    if (parts.length === 3) { return parts[0]*3600 + parts[1]*60 + parts[2]; }
+    if (parts.length === 2) { return parts[0]*60 + parts[1]; }
+    return parseFloat(str) || 0;
+  }
+
+  function formatTime(s) {
+    s = Math.max(0, s);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    if (h > 0) { return `${h}:${pad(m)}:${pad(sec)}`; }
+    return `${m}:${pad(sec)}`;
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  els('trim-start').addEventListener('change', () => {
+    trimStart = Math.max(0, Math.min(parseTime(els('trim-start').value), trimEnd - 0.1));
+    ensureTrimEnabled();
+    updateTrimUI();
+  });
+  els('trim-end').addEventListener('change', () => {
+    trimEnd = Math.min(videoDuration, Math.max(parseTime(els('trim-end').value), trimStart + 0.1));
+    ensureTrimEnabled();
+    updateTrimUI();
+  });
+
+  // ── Scrubber ──────────────────────────────────────────────────────────────
+  function setupScrubber() {
+    const slider = els('scrub-slider');
+    slider.max = String(Math.max(1, Math.round(videoDuration)));
+    slider.value = '0';
+    scrubTime = 0;
+    els('scrub-time').textContent = formatTime(0);
+    slider.addEventListener('input', () => {
+      scrubTime = parseInt(slider.value) || 0;
+      els('scrub-time').textContent = formatTime(scrubTime);
+      if (scrubTimer) { clearTimeout(scrubTimer); }
+      scrubTimer = setTimeout(loadReferenceFrame, 120);
+    });
+  }
+
+  function loadReferenceFrame() {
+    const v = refVideo();
+    if (!v.path) { syncCanvasSize(); return; }
+    const wantIndex = refIndex, wantTime = scrubTime;
+    requestFrame(v.path, scrubTime).then(uri => {
+      // Ignore if the user moved on to another video/frame meanwhile
+      if (refIndex !== wantIndex || scrubTime !== wantTime) { return; }
+      if (uri) {
+        els('video-frame').src = uri;
+      } else {
+        syncCanvasSize();
+      }
+    });
+  }
+
+  // ── Crop geometry (mode → pixel rect) ─────────────────────────────────────
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  // Clamp a rect into a frame; keep width/height even (yuv420/libx265 friendly).
+  function finalizeRect(r, vw, vh) {
+    let x = clamp(Math.round(r.x), 0, Math.max(0, vw - 2));
+    let y = clamp(Math.round(r.y), 0, Math.max(0, vh - 2));
+    let w = clamp(Math.round(r.w), 2, vw - x);
+    let h = clamp(Math.round(r.h), 2, vh - y);
+    w -= w % 2; h -= h % 2;
+    return { x, y, w: Math.max(2, w), h: Math.max(2, h) };
+  }
+
+  function anchoredRect(vw, vh, rw, rh, anchor) {
+    let w, h;
+    if (vw / vh >= rw / rh) { h = vh; w = Math.round(vh * rw / rh); }
+    else { w = vw; h = Math.round(vw * rh / rw); }
+    const x = anchor.includes('w') ? 0 : anchor.includes('e') ? vw - w : Math.round((vw - w) / 2);
+    const y = anchor.includes('n') ? 0 : anchor.includes('s') ? vh - h : Math.round((vh - h) / 2);
+    return { x, y, w, h };
+  }
+
+  function insetRect(vw, vh, p) {
+    const px = (val, dim) => p.unit === 'percent' ? val * dim : val;
+    const l = px(p.l, vw), r = px(p.r, vw), t = px(p.t, vh), b = px(p.b, vh);
+    return { x: l, y: t, w: vw - l - r, h: vh - t - b };
+  }
+
+  function rectForModeParams(mode, p, vw, vh) {
+    let r;
+    if (mode === 'percent')      { r = { x: p.fx*vw, y: p.fy*vh, w: p.fw*vw, h: p.fh*vh }; }
+    else if (mode === 'absolute'){ r = { x: p.x, y: p.y, w: p.w, h: p.h }; }
+    else if (mode === 'insets')  { r = insetRect(vw, vh, p); }
+    else                         { r = anchoredRect(vw, vh, p.rw, p.rh, p.anchor); }
+    return finalizeRect(r, vw, vh);
+  }
+
+  function rectForVideo(vw, vh) { return rectForModeParams(cropMode, cropParams[cropMode], vw, vh); }
+
+  // Write the current reference-pixel rect back into the active mode's params.
+  function paramsToRect(rect) {
+    const vw = videoWidth, vh = videoHeight;
+    if (cropMode === 'percent') {
+      cropParams.percent = { fx: rect.x/vw, fy: rect.y/vh, fw: rect.w/vw, fh: rect.h/vh };
+    } else if (cropMode === 'absolute') {
+      cropParams.absolute = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+    } else if (cropMode === 'insets') {
+      const p = cropParams.insets;
+      const l = rect.x, t = rect.y, r = vw - (rect.x + rect.w), b = vh - (rect.y + rect.h);
+      if (p.unit === 'percent') { p.l = l/vw; p.r = r/vw; p.t = t/vh; p.b = b/vh; }
+      else { p.l = l; p.r = r; p.t = t; p.b = b; }
+    } else if (cropMode === 'aspect') {
+      const cx = rect.x + rect.w/2, cy = rect.y + rect.h/2;
+      const hx = cx < vw/3 ? 'w' : cx > 2*vw/3 ? 'e' : '';
+      const hy = cy < vh/3 ? 'n' : cy > 2*vh/3 ? 's' : '';
+      cropParams.aspect = { rw: rect.w, rh: rect.h, anchor: (hy + hx) || 'center' };
+    }
+  }
+
+  function resetCropToFull() {
+    cropParams.percent = { fx: 0, fy: 0, fw: 1, fh: 1 };
+    cropParams.absolute = { x: 0, y: 0, w: videoWidth, h: videoHeight };
+    cropParams.insets = { t: 0, r: 0, b: 0, l: 0, unit: 'percent' };
+    cropParams.aspect = { rw: videoWidth, rh: videoHeight, anchor: 'center' };
+    cropAspect = videoWidth / videoHeight;
+    cropRect = rectForVideo(videoWidth, videoHeight);
+  }
+
+  // ── Crop mode UI ──────────────────────────────────────────────────────────
+  document.querySelectorAll('#crop-mode-bar .mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+  });
+
+  function switchMode(mode) {
+    if (!cropParams[mode]) { return; }
+    // Carry the current visual rect into the new mode for continuity
+    const rect = cropRect;
+    cropMode = mode;
+    paramsToRect(rect);
+    cropRect = rectForVideo(videoWidth, videoHeight);
+    updateModeUI();
+  }
+
+  function updateModeUI() {
+    document.querySelectorAll('#crop-mode-bar .mode-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === cropMode);
+    });
+    els('crop-rect-inputs').classList.toggle('hidden', !(cropMode === 'percent' || cropMode === 'absolute'));
+    els('crop-aspect-controls').classList.toggle('hidden', cropMode !== 'aspect');
+    els('crop-insets-controls').classList.toggle('hidden', cropMode !== 'insets');
+    els('crop-container').classList.toggle('no-draw', cropMode === 'aspect');
+    updateWarning();
+    refreshCropInputs();
+    drawCropRect();
+  }
+
+  function updateWarning() {
+    const w = els('crop-warning');
+    if (!isBatch || resolutionsMatch) { w.classList.add('hidden'); return; }
+    w.classList.remove('hidden');
+    if (cropMode === 'absolute') {
+      w.textContent = '⚠ These videos have different resolutions. Absolute uses a fixed pixel rect clamped to each video, so the crop may differ between them. Percentage, Aspect Ratio, or Insets (%) adapt to each video.';
+    } else if (cropMode === 'insets' && cropParams.insets.unit === 'px') {
+      w.textContent = '⚠ Different resolutions: pixel insets are clamped per video. Switch to % to trim proportionally.';
+    } else {
+      w.textContent = 'ℹ Videos have different resolutions — the crop adapts to each one. The preview reflects the selected video above.';
+    }
+  }
+
+  function refreshCropInputs() {
+    if (cropMode === 'percent' || cropMode === 'absolute') { updateCropInputs(); }
+    else if (cropMode === 'insets') { updateInsetInputs(); }
+    else if (cropMode === 'aspect') { updateAspectInputs(); }
+    updateCropSummary();
+  }
+
+  // ── Crop canvas ───────────────────────────────────────────────────────────
+  function initCropCanvas(img) {
+    cropImg = img;
+    cropCanvas = els('crop-canvas');
+    cropCtx = cropCanvas.getContext('2d');
+
+    img.addEventListener('load', syncCanvasSize);
+    const resizeObs = new ResizeObserver(() => syncCanvasSize());
+    resizeObs.observe(img);
+
+    cropCanvas.addEventListener('mousedown', onCropMouseDown);
+    document.addEventListener('mousemove', onCropMouseMove);
+    document.addEventListener('mouseup', onCropMouseUp);
+  }
+
+  function syncCanvasSize() {
+    if (!cropImg) { return; }
+    const r = cropImg.getBoundingClientRect();
+    canvasW = r.width || 1; canvasH = r.height || 1;
+    cropCanvas.width = canvasW;
+    cropCanvas.height = canvasH;
+    scaleX = videoWidth / canvasW;
+    scaleY = videoHeight / canvasH;
+    drawCropRect();
+  }
+
+  function toCanvas(videoPx, axis) { return axis === 'x' ? videoPx / scaleX : videoPx / scaleY; }
+  function toVideo(canvasPx, axis) { return axis === 'x' ? canvasPx * scaleX : canvasPx * scaleY; }
+
+  function drawCropRect() {
+    if (!cropCtx) { return; }
+    cropCtx.clearRect(0, 0, canvasW, canvasH);
+
+    const cx = toCanvas(cropRect.x, 'x');
+    const cy = toCanvas(cropRect.y, 'y');
+    const cw = toCanvas(cropRect.w, 'x');
+    const ch = toCanvas(cropRect.h, 'y');
+
+    cropCtx.fillStyle = 'rgba(0,0,0,0.45)';
+    cropCtx.fillRect(0, 0, canvasW, canvasH);
+    cropCtx.clearRect(cx, cy, cw, ch);
+
+    cropCtx.strokeStyle = 'rgba(255,255,255,0.85)';
+    cropCtx.lineWidth = 1.5;
+    cropCtx.strokeRect(cx, cy, cw, ch);
+
+    cropCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+    cropCtx.lineWidth = 0.5;
+    for (let i = 1; i <= 2; i++) {
+      cropCtx.beginPath();
+      cropCtx.moveTo(cx + cw * i/3, cy);
+      cropCtx.lineTo(cx + cw * i/3, cy + ch);
+      cropCtx.stroke();
+      cropCtx.beginPath();
+      cropCtx.moveTo(cx, cy + ch * i/3);
+      cropCtx.lineTo(cx + cw, cy + ch * i/3);
+      cropCtx.stroke();
+    }
+
+    // Handles only when free-editing (not in aspect mode)
+    if (cropMode !== 'aspect') { drawHandles(cx, cy, cw, ch); }
+  }
+
+  function drawHandles(cx, cy, cw, ch) {
+    const hs = HANDLE_SIZE;
+    cropCtx.fillStyle = 'white';
+    for (const h of getHandles(cx, cy, cw, ch)) {
+      cropCtx.fillRect(h.x - hs/2, h.y - hs/2, hs, hs);
+    }
+  }
+
+  function getHandles(cx, cy, cw, ch) {
+    const mx = cx + cw/2, my = cy + ch/2;
+    return [
+      { id: 'nw', x: cx,      y: cy      },
+      { id: 'n',  x: mx,      y: cy      },
+      { id: 'ne', x: cx + cw, y: cy      },
+      { id: 'e',  x: cx + cw, y: my      },
+      { id: 'se', x: cx + cw, y: cy + ch },
+      { id: 's',  x: mx,      y: cy + ch },
+      { id: 'sw', x: cx,      y: cy + ch },
+      { id: 'w',  x: cx,      y: my      },
+    ];
+  }
+
+  function hitHandle(cx, cy, cw, ch, mx, my) {
+    const hs = HANDLE_SIZE + 4;
+    for (const h of getHandles(cx, cy, cw, ch)) {
+      if (Math.abs(mx - h.x) <= hs/2 && Math.abs(my - h.y) <= hs/2) { return h.id; }
+    }
+    return null;
+  }
+
+  function onCropMouseDown(e) {
+    if (cropMode === 'aspect') { return; } // aspect is anchor-driven, not free-draw
+    const rect = cropCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+    const cx = toCanvas(cropRect.x, 'x');
+    const cy = toCanvas(cropRect.y, 'y');
+    const cw = toCanvas(cropRect.w, 'x');
+    const ch = toCanvas(cropRect.h, 'y');
+
+    const handle = hitHandle(cx, cy, cw, ch, mx, my);
+    const inside = mx >= cx && mx <= cx+cw && my >= cy && my <= cy+ch;
+
+    if (handle) {
+      dragState = { mode: handle, startX: mx, startY: my, origRect: { ...cropRect } };
+    } else if (inside) {
+      dragState = { mode: 'move', startX: mx, startY: my, origRect: { ...cropRect } };
+    } else {
+      dragState = { mode: 'new', startX: mx, startY: my, origRect: { ...cropRect } };
+    }
+    e.preventDefault();
+  }
+
+  function onCropMouseMove(e) {
+    if (!dragState || !cropCanvas) { return; }
+    const rect = cropCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const dx = mx - dragState.startX, dy = my - dragState.startY;
+    const o = dragState.origRect;
+
+    let nx = o.x, ny = o.y, nw = o.w, nh = o.h;
+
+    if (dragState.mode === 'move') {
+      nx = clamp(o.x + toVideo(dx, 'x'), 0, videoWidth - o.w);
+      ny = clamp(o.y + toVideo(dy, 'y'), 0, videoHeight - o.h);
+    } else if (dragState.mode === 'new') {
+      const sx = toVideo(dragState.startX, 'x'), sy = toVideo(dragState.startY, 'y');
+      const ex = toVideo(mx, 'x'), ey = toVideo(my, 'y');
+      nx = Math.max(0, Math.min(sx, ex));
+      ny = Math.max(0, Math.min(sy, ey));
+      nw = Math.min(Math.abs(ex - sx), videoWidth - nx);
+      nh = Math.min(Math.abs(ey - sy), videoHeight - ny);
+    } else {
+      const ddx = toVideo(dx, 'x'), ddy = toVideo(dy, 'y');
+      if (dragState.mode.includes('n')) { ny = clamp(o.y + ddy, 0, o.y + o.h - 10); nh = o.h - (ny - o.y); }
+      if (dragState.mode.includes('s')) { nh = clamp(o.h + ddy, 10, videoHeight - o.y); }
+      if (dragState.mode.includes('w')) { nx = clamp(o.x + ddx, 0, o.x + o.w - 10); nw = o.w - (nx - o.x); }
+      if (dragState.mode.includes('e')) { nw = clamp(o.w + ddx, 10, videoWidth - o.x); }
+
+      if (cropAspectLocked && dragState.mode !== 'move') { nh = nw / cropAspect; }
+    }
+
+    cropRect = finalizeRect({ x: nx, y: ny, w: nw, h: nh }, videoWidth, videoHeight);
+    paramsToRect(cropRect);
+    refreshCropInputs();
+    drawCropRect();
+  }
+
+  function onCropMouseUp() { dragState = null; }
+
+  // ── Rect inputs (percent / absolute) ──────────────────────────────────────
+  function updateCropInputs() {
+    els('crop-w').value = cropRect.w;
+    els('crop-h').value = cropRect.h;
+    els('crop-x').value = cropRect.x;
+    els('crop-y').value = cropRect.y;
+  }
+
+  ['crop-w', 'crop-h', 'crop-x', 'crop-y'].forEach(id => {
+    els(id).addEventListener('change', () => {
+      const r = {
+        w: parseInt(els('crop-w').value) || cropRect.w,
+        h: parseInt(els('crop-h').value) || cropRect.h,
+        x: parseInt(els('crop-x').value) || 0,
+        y: parseInt(els('crop-y').value) || 0,
+      };
+      cropRect = finalizeRect(r, videoWidth, videoHeight);
+      paramsToRect(cropRect);
+      updateCropInputs();
+      drawCropRect();
+    });
+  });
+
+  els('crop-lock-btn').addEventListener('click', () => {
+    cropAspectLocked = !cropAspectLocked;
+    cropAspect = cropRect.w / cropRect.h;
+    els('crop-lock-btn').textContent = cropAspectLocked ? '🔒' : '🔓';
+  });
+
+  // ── Aspect controls ───────────────────────────────────────────────────────
+  function updateAspectInputs() {
+    const p = cropParams.aspect;
+    const sel = els('crop-ratio');
+    const key = `${p.rw}:${p.rh}`;
+    const known = Array.from(sel.options).some(o => o.value === key);
+    sel.value = known ? key : 'custom';
+    els('crop-ratio-custom').classList.toggle('hidden', sel.value !== 'custom');
+    els('crop-ratio-w').value = p.rw;
+    els('crop-ratio-h').value = p.rh;
+    document.querySelectorAll('#crop-anchor-grid button').forEach(b => {
+      b.classList.toggle('active', b.dataset.anchor === p.anchor);
+    });
+  }
+
+  function applyAspectFromControls() {
+    const sel = els('crop-ratio');
+    if (sel.value === 'custom') {
+      cropParams.aspect.rw = parseInt(els('crop-ratio-w').value) || 16;
+      cropParams.aspect.rh = parseInt(els('crop-ratio-h').value) || 9;
+    } else {
+      const [rw, rh] = sel.value.split(':').map(Number);
+      cropParams.aspect.rw = rw; cropParams.aspect.rh = rh;
+    }
+    cropRect = rectForVideo(videoWidth, videoHeight);
+    updateAspectInputs();
+    drawCropRect();
+  }
+
+  els('crop-ratio').addEventListener('change', () => {
+    els('crop-ratio-custom').classList.toggle('hidden', els('crop-ratio').value !== 'custom');
+    applyAspectFromControls();
+  });
+  els('crop-ratio-w').addEventListener('change', applyAspectFromControls);
+  els('crop-ratio-h').addEventListener('change', applyAspectFromControls);
+  document.querySelectorAll('#crop-anchor-grid button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      cropParams.aspect.anchor = btn.dataset.anchor;
+      cropRect = rectForVideo(videoWidth, videoHeight);
+      updateAspectInputs();
+      drawCropRect();
+    });
+  });
+
+  // ── Insets controls ───────────────────────────────────────────────────────
+  function insetDisplay(frac, dim) {
+    const p = cropParams.insets;
+    return p.unit === 'percent' ? +(frac * 100).toFixed(1) : Math.round(frac);
+  }
+
+  function updateInsetInputs() {
+    const p = cropParams.insets;
+    els('crop-inset-top').value = insetDisplay(p.t, videoHeight);
+    els('crop-inset-right').value = insetDisplay(p.r, videoWidth);
+    els('crop-inset-bottom').value = insetDisplay(p.b, videoHeight);
+    els('crop-inset-left').value = insetDisplay(p.l, videoWidth);
+    els('crop-inset-unit').textContent = p.unit === 'percent' ? '%' : 'px';
+  }
+
+  function applyInsetsFromControls() {
+    const p = cropParams.insets;
+    const conv = v => p.unit === 'percent' ? (parseFloat(v) || 0) / 100 : (parseInt(v) || 0);
+    p.t = conv(els('crop-inset-top').value);
+    p.r = conv(els('crop-inset-right').value);
+    p.b = conv(els('crop-inset-bottom').value);
+    p.l = conv(els('crop-inset-left').value);
+    cropRect = rectForVideo(videoWidth, videoHeight);
+    drawCropRect();
+  }
+
+  ['crop-inset-top', 'crop-inset-right', 'crop-inset-bottom', 'crop-inset-left'].forEach(id => {
+    els(id).addEventListener('change', applyInsetsFromControls);
+  });
+
+  els('crop-inset-unit').addEventListener('click', () => {
+    const p = cropParams.insets;
+    if (p.unit === 'percent') {
+      // fractions → pixels of the reference video
+      p.unit = 'px';
+      p.l = Math.round(p.l * videoWidth); p.r = Math.round(p.r * videoWidth);
+      p.t = Math.round(p.t * videoHeight); p.b = Math.round(p.b * videoHeight);
+    } else {
+      p.unit = 'percent';
+      p.l = p.l / videoWidth; p.r = p.r / videoWidth;
+      p.t = p.t / videoHeight; p.b = p.b / videoHeight;
+    }
+    updateInsetInputs();
+    updateWarning();
+  });
+
+  // ── Resize ────────────────────────────────────────────────────────────────
+  function syncSliderFromDimensions() {
+    const pct = Math.round((parseInt(els('resize-w').value) / videoWidth) * 100);
+    els('resize-slider').value = clamp(pct, 10, 200);
+  }
+
+  els('resize-slider').addEventListener('input', () => {
+    const pct = parseInt(els('resize-slider').value) / 100;
+    els('resize-w').value = Math.round(videoWidth * pct);
+    els('resize-h').value = Math.round(videoHeight * pct);
+    highlightActivePreset();
+  });
+
+  els('resize-w').addEventListener('change', () => {
+    const w = parseInt(els('resize-w').value);
+    if (resizeAspectLocked) { els('resize-h').value = Math.round(w / resizeAspect); }
+    syncSliderFromDimensions();
+    highlightActivePreset();
+  });
+  els('resize-h').addEventListener('change', () => {
+    const h = parseInt(els('resize-h').value);
+    if (resizeAspectLocked) { els('resize-w').value = Math.round(h * resizeAspect); }
+    syncSliderFromDimensions();
+    highlightActivePreset();
+  });
+
+  els('resize-lock-btn').addEventListener('click', () => {
+    resizeAspectLocked = !resizeAspectLocked;
+    els('resize-lock-btn').textContent = resizeAspectLocked ? '🔒' : '🔓';
+  });
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const scale = parseFloat(btn.dataset.scale);
+      const pw = parseInt(btn.dataset.w), ph = parseInt(btn.dataset.h);
+      if (!isNaN(scale)) {
+        els('resize-w').value = Math.round(videoWidth * scale);
+        els('resize-h').value = Math.round(videoHeight * scale);
+      } else if (!isNaN(pw)) {
+        const aspect = videoWidth / videoHeight;
+        if (videoWidth / videoHeight >= pw / ph) {
+          els('resize-w').value = pw;
+          els('resize-h').value = Math.round(pw / aspect);
+        } else {
+          els('resize-h').value = ph;
+          els('resize-w').value = Math.round(ph * aspect);
+        }
+      }
+      syncSliderFromDimensions();
+      highlightActivePreset();
+    });
+  });
+
+  function highlightActivePreset() {
+    const w = parseInt(els('resize-w').value), h = parseInt(els('resize-h').value);
+    const pct = Math.round((w / videoWidth) * 100);
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      const scale = parseFloat(btn.dataset.scale);
+      const pw = parseInt(btn.dataset.w), ph = parseInt(btn.dataset.h);
+      const matches = (!isNaN(scale) && Math.round(scale*100) === pct)
+        || (!isNaN(pw) && pw === w && ph === h);
+      btn.classList.toggle('active', matches);
+    });
+    updateResizeSummary();
+  }
+
+  // ── Build payloads ────────────────────────────────────────────────────────
+  function buildCrops() {
+    if (!els('crop-enabled').checked) { return undefined; }
+    return videos.map(v => {
+      const r = rectForVideo(v.width, v.height);
+      return { path: v.path, x: r.x, y: r.y, width: r.w, height: r.h };
+    });
+  }
+
+  function buildPreset() {
+    const preset = { name: '' };
+    if (els('trim-enabled').checked) {
+      preset.trim = { start: trimStart, end: trimEnd };
+    }
+    if (els('crop-enabled').checked) {
+      preset.crop = {
+        mode: cropMode,
+        params: JSON.parse(JSON.stringify(cropParams[cropMode])),
+        refWidth: videoWidth,
+        refHeight: videoHeight,
+      };
+    }
+    if (els('resize-enabled').checked) {
+      preset.resize = { width: parseInt(els('resize-w').value), height: parseInt(els('resize-h').value) };
+    }
+    return preset;
+  }
+
+  // ── Apply / Cancel ────────────────────────────────────────────────────────
+  els('apply-btn').addEventListener('click', () => {
+    const trim = els('trim-enabled').checked ? { start: trimStart, end: trimEnd } : undefined;
+    const resize = els('resize-enabled').checked
+      ? { width: parseInt(els('resize-w').value), height: parseInt(els('resize-h').value) }
+      : undefined;
+    vscode.postMessage({ type: 'apply', trim, crops: buildCrops(), resize });
+  });
+
+  els('cancel-btn').addEventListener('click', () => {
+    vscode.postMessage({ type: 'cancel' });
+  });
+
+})();
+</script>
+</body>
+</html>

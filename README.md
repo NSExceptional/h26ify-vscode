@@ -1,55 +1,57 @@
-# H26ify: A VS Code Extension
+# H26ify
 
-Identify and convert videos from other formats to HEVC.
+Identify, convert, and edit videos right inside VS Code — HEVC (H.265) conversion plus trimming, cropping, and resizing.
 
 ## Features
 
+### Browse & identify
 - Automatically scans your workspace for video files
-- Organizes videos into two views: HEVC videos and other videos
-- Provides one-click conversion of videos to HEVC format
-- Batch convert all non-HEVC videos with a single click
-- Visual indicators for video codec and conversion status
+- Organizes videos into **HEVC**, **Non-HEVC**, and **All Videos** groups
+- Shows codec, duration, and file size at a glance, with a reveal-in-Finder action per file
+
+### Convert to HEVC
+- One-click conversion of any video to HEVC (H.265)
+- Batch-convert every non-HEVC video at once
+- Re-encode existing HEVC videos to reduce file size (choose a CRF quality)
+
+### Edit (single or batch)
+- **Edit Selected Videos** from the view toolbar or the right-click menu
+- **Trim** with a filmstrip scrubber and start/end times
+- **Crop** with a live preview — and four modes for applying one crop across differently-sized clips: Percentage, Absolute, Aspect Ratio (with anchor), and Insets
+- **Resize** by percentage or to common presets (720p/1080p/4K), with aspect-ratio lock
+- Preview any frame while cropping, and pick which clip to visualize against when editing several at once
+- Save your trim/crop/resize combinations as reusable **presets**
 
 ## Requirements
 
-This extension requires external tools to function properly:
+This extension shells out to external tools, which must be installed and available on your `PATH`:
 
-- **ffprobe**: Used to detect video codecs and metadata
-- **ffmpeg**: Used to convert videos to HEVC format
+- **ffmpeg** — converts and edits videos
+- **ffprobe** — detects codecs and reads metadata
 
-Both tools must be installed and available in your system PATH.
-
-### Installation on macOS
+### Install ffmpeg
 
 ```bash
+# macOS
 brew install ffmpeg
-```
 
-### Installation on Windows
-
-Download from [FFmpeg's official website](https://ffmpeg.org/download.html) or install using package managers like Chocolatey:
-
-```bash
+# Windows (Chocolatey)
 choco install ffmpeg
-```
 
-### Installation on Linux
-
-```bash
-sudo apt install ffmpeg  # Debian/Ubuntu
-sudo dnf install ffmpeg  # Fedora
+# Linux
+sudo apt install ffmpeg   # Debian/Ubuntu
+sudo dnf install ffmpeg   # Fedora
 ```
 
 ## Usage
 
-1. Open the H26ify panel from the activity bar
-2. The extension will automatically scan your workspace for video files
-3. Videos are sorted into "HEVC Videos" and "Other Videos" views
-4. To convert a single video to HEVC, click the convert button next to it
-5. To convert all videos at once, click the convert all button at the top of the Other Videos view
-6. Refresh the views after adding new videos by clicking the refresh button
+1. Open the **Videos** view in the Explorer sidebar.
+2. H26ify scans your workspace and sorts videos into HEVC / Non-HEVC groups.
+3. Convert a single video with its inline button, or convert all non-HEVC videos from the group's toolbar.
+4. To edit, select one or more videos and choose **Edit Selected Videos** (view toolbar or right-click), then enable Trim, Crop, and/or Resize and click **Apply**.
+5. Click **Refresh** after adding new files.
 
 ## Notes
 
-- Converted videos are saved with a ".hevc" suffix in the same directory as the original
-- The original videos are not modified or deleted
+- Output videos are written alongside the originals using a configurable name pattern.
+- Originals are never modified in place; the handling of the source file (keep, trash, or delete) is configurable in settings.

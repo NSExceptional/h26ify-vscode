@@ -12,5 +12,9 @@
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,
 		"experimentalDecorators": true
-	}
+	},
+	"exclude": [
+		"debug/**",
+		"node_modules"
+	]
 }

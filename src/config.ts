@@ -5,16 +5,25 @@
 
 import * as vscode from 'vscode';
 
+export type OutputFileStrategy = 'useOriginalName' | 'askForName' | 'useTemplate';
+export type OriginalFileHandling = 'leaveInPlace' | 'trash' | 'delete';
+
 interface H26ifyConfig {
     videoExtensions: string[];
     outputNamePattern: string;
+    outputFileStrategy: OutputFileStrategy;
+    originalFileHandling: OriginalFileHandling;
+    overwriteExisting: boolean;
 }
 
 class Config implements H26ifyConfig {
     static shared: Config = new Config();
 
-    public videoExtensions: string[] = [];
+    public videoExtensions: string[] = ['mp4', 'mov', 'mkv'];
     public outputNamePattern: string = '';
+    public outputFileStrategy: OutputFileStrategy = 'useTemplate';
+    public originalFileHandling: OriginalFileHandling = 'trash';
+    public overwriteExisting: boolean = false;
 
     constructor() {
         this.update();
@@ -40,6 +49,24 @@ class Config implements H26ifyConfig {
         const outputNamePattern = config.get<string>('outputNamePattern');
         if (outputNamePattern) {
             this.outputNamePattern = outputNamePattern;
+        }
+
+        // Output file strategy
+        const outputFileStrategy = config.get<OutputFileStrategy>('outputFileStrategy');
+        if (outputFileStrategy) {
+            this.outputFileStrategy = outputFileStrategy;
+        }
+
+        // Original file handling
+        const originalFileHandling = config.get<OriginalFileHandling>('originalFileHandling');
+        if (originalFileHandling) {
+            this.originalFileHandling = originalFileHandling;
+        }
+
+        // Overwrite existing files
+        const overwriteExisting = config.get<boolean>('overwriteExisting');
+        if (overwriteExisting !== undefined) {
+            this.overwriteExisting = overwriteExisting;
         }
     }
 }
