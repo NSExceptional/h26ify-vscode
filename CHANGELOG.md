@@ -2,7 +2,7 @@
 
 All notable changes to the "h26ify" extension are documented here.
 
-## [0.1.0] - 2026-09-16
+## [2026.9.16]
 
 ### Added
 - Browse workspace videos grouped into HEVC, Non-HEVC, and All Videos.

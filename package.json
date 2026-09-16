@@ -3,7 +3,7 @@
     "publisher": "tanner",
     "displayName": "H26ify",
     "description": "Identify, convert, and edit videos in your workspace — HEVC conversion plus trim, crop, and resize.",
-    "version": "0.1.0",
+    "version": "2026.9.16",
     "license": "MIT",
     "icon": "media/icon.png",
     "engines": {
