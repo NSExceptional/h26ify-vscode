@@ -87,8 +87,8 @@ suite('Extension Test Suite', () => {
 		assert.equal(`${cwd}/foo.dat`, fs.realpathSync('./foo.dat'));
 
 		assert.ok(!Util.isSameFile(
-			'/Users/tanner/Desktop/media/hevc-h265.hvc1.mp4',
-			'/Users/tanner/Desktop/media/hevc-h265.hvc1.hevc.mp4'
+			'/Users/me/Desktop/media/hevc-h265.hvc1.mp4',
+			'/Users/me/Desktop/media/hevc-h265.hvc1.hevc.mp4'
 		));
 	})
 

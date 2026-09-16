@@ -259,19 +259,21 @@ export class Util {
     }
 
     static isSameFile(a: string, b: string): boolean {
-        // Remove filenames to avoid errors if file doesn't exist
-        const dirA = path.dirname(a);
-        const dirB = path.dirname(b);
-        const fileA = path.basename(a);
-        const fileB = path.basename(b);
+        // Resolve a directory's real path (following symlinks) when it exists,
+        // falling back to a plain absolute path when it doesn't — the output
+        // file/dir may not exist yet, and a missing dir must not throw.
+        const resolveDir = (dir: string): string => {
+            try {
+                return fs.realpathSync(dir);
+            } catch {
+                return path.resolve(dir);
+            }
+        };
 
-        // Resolve real paths for directories
-        const realDirA = fs.realpathSync(dirA);
-        const realDirB = fs.realpathSync(dirB);
-
-        // Compare full paths with filenames
-        const same = path.join(realDirA, fileA) === path.join(realDirB, fileB);
-        return same;
+        // Compare directory-by-directory so a non-existent file doesn't throw
+        const fullA = path.join(resolveDir(path.dirname(a)), path.basename(a));
+        const fullB = path.join(resolveDir(path.dirname(b)), path.basename(b));
+        return fullA === fullB;
     }
 
     static filenameFromTemplate(inputFile: string, toFormat: string, pattern: string): string {
