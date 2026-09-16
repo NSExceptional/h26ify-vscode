@@ -2,6 +2,8 @@
 
 Identify, convert, and edit videos right inside VS Code — HEVC (H.265) conversion plus trimming, cropping, and resizing.
 
+![H26ify — the Videos view and the edit panel](https://raw.githubusercontent.com/NSExceptional/h26ify-vscode/master/images/screenshot.png)
+
 ## Features
 
 ### Browse & identify

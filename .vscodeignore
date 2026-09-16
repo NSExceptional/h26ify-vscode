@@ -3,6 +3,7 @@
 .github/**
 src/**
 debug/**
+images/**
 out/test/**
 node_modules/**
 .gitignore
