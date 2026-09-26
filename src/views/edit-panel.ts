@@ -67,6 +67,7 @@ export class EditPanel {
                 retainContextWhenHidden: true,
             }
         );
+        panel.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'icon.png');
 
         return new EditPanel(panel, context.extensionUri, itemsArr);
     }
