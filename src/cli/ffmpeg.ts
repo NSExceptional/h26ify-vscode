@@ -111,6 +111,56 @@ class ffmpeg extends EnvironmentCmd {
         });
     }
 
+    /** Where browser-playable preview copies of videos are cached */
+    readonly previewProxyDir = path.join(os.tmpdir(), 'h26ify-preview');
+
+    /**
+     * Create a browser-playable copy of a video for previewing in a webview.
+     * `remux` copies the video stream into an MP4 container (near-instant, for
+     * containers the webview can't open, like MKV); `transcode` re-encodes to a
+     * 720p H.264 proxy (for codecs the webview can't decode).
+     * Writes to a temp file first so a cancelled run never leaves a partial output.
+     */
+    makePreviewProxy(
+        input: string, output: string, mode: 'remux' | 'transcode', isHEVC: boolean,
+        cancellationToken?: vscode.CancellationToken
+    ): Promise<void> {
+        const tmp = `${output}.tmp.mp4`;
+        const videoArgs = mode === 'remux'
+            ? ['-c:v', 'copy', ...(isHEVC ? ['-tag:v', 'hvc1'] : [])]
+            : ['-vf', "scale=-2:'min(720,trunc(ih/2)*2)'", '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p'];
+        const args = [
+            '-y', '-v', 'error', '-i', input,
+            '-map', '0:v:0', '-map', '0:a:0?',
+            ...videoArgs,
+            '-c:a', 'aac', '-b:a', '128k',
+            '-movflags', '+faststart',
+            tmp,
+        ];
+
+        fs.mkdirSync(path.dirname(output), { recursive: true });
+        return new Promise((resolve, reject) => {
+            const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+            let stderr = '';
+            proc.stderr?.on('data', d => { stderr += d.toString(); });
+            const cancelSub = cancellationToken?.onCancellationRequested(() => proc.kill('SIGKILL'));
+            const fail = (message: string) => {
+                try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+                reject(new Error(message));
+            };
+            proc.on('error', err => { cancelSub?.dispose(); fail(err.message); });
+            proc.on('close', code => {
+                cancelSub?.dispose();
+                if (code === 0 && fs.existsSync(tmp)) {
+                    fs.renameSync(tmp, output);
+                    resolve();
+                } else {
+                    fail(stderr.trim().split('\n').pop() || `ffmpeg exited with code ${code}`);
+                }
+            });
+        });
+    }
+
     async transcode(options: FFmpegOptions, cancellationToken?: vscode.CancellationToken): Promise<string> {
         this.guardCanUseFFmpeg();
 

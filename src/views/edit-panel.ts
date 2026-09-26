@@ -9,7 +9,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import VideoItem from '../video/video-item';
 import ffmpeg, { FFmpegOptions } from '../cli/ffmpeg';
 import ffprobe from '../cli/ffprobe';
@@ -24,6 +24,8 @@ interface VideoMeta {
     width: number;
     height: number;
     duration: number;
+    /** Webview URI for playing the original file directly */
+    src?: string;
 }
 
 interface VideoCrop {
@@ -38,6 +40,7 @@ interface VideoCrop {
 type WebviewMessage =
     | { type: 'apply'; trim?: { start: number; end: number }; crops?: VideoCrop[]; resize?: { width: number; height: number } }
     | { type: 'requestFrame'; reqId: number; path: string; atSeconds: number }
+    | { type: 'requestPreviewProxy'; reqId: number; path: string; mode: 'remux' | 'transcode' }
     | { type: 'savePreset'; preset: EditPreset }
     | { type: 'deletePreset'; name: string }
     | { type: 'cancel' };
@@ -49,11 +52,15 @@ export class EditPanel {
     private readonly extensionUri: vscode.Uri;
     private videos: VideoMeta[];
     private readonly isBatch: boolean;
+    private disposed = false;
+    /** Cancels in-flight preview proxy encodes when the panel closes */
+    private readonly work = new vscode.CancellationTokenSource();
 
     static open(
         context: vscode.ExtensionContext,
         items: VideoItem | VideoItem[]
-    ): EditPanel {        const itemsArr = Array.isArray(items) ? items : [items];
+    ): EditPanel {
+        const itemsArr = Array.isArray(items) ? items : [items];
         const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
         const title = itemsArr.length === 1 ? `Edit: ${itemsArr[0].label}` : `Edit ${itemsArr.length} Videos`;
 
@@ -63,7 +70,12 @@ export class EditPanel {
             column,
             {
                 enableScripts: true,
-                localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')],
+                // The trim preview plays the videos themselves, or a cached proxy copy
+                localResourceRoots: [
+                    vscode.Uri.joinPath(context.extensionUri, 'media'),
+                    ...[...new Set(itemsArr.map(i => path.dirname(i.uri.fsPath)))].map(d => vscode.Uri.file(d)),
+                    vscode.Uri.file(ffmpeg.previewProxyDir),
+                ],
                 retainContextWhenHidden: true,
             }
         );
@@ -86,6 +98,11 @@ export class EditPanel {
 
         this.panel.webview.html = this.buildHtml();
         this.panel.webview.onDidReceiveMessage(msg => this.handleMessage(msg as WebviewMessage));
+        this.panel.onDidDispose(() => {
+            this.disposed = true;
+            this.work.cancel();
+            this.work.dispose();
+        });
 
         // Send init data asynchronously after the panel is shown
         this.sendInit();
@@ -96,6 +113,7 @@ export class EditPanel {
         const htmlPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'edit-panel.html');
         let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
         html = html.replace(/\{\{NONCE\}\}/g, nonce);
+        html = html.replace(/\{\{CSP_SOURCE\}\}/g, this.panel.webview.cspSource);
         return html;
     }
 
@@ -115,10 +133,14 @@ export class EditPanel {
             } catch { /* keep existing values */ }
         }));
 
+        for (const v of this.videos) {
+            v.src = this.panel.webview.asWebviewUri(vscode.Uri.file(v.path)).toString();
+        }
+
         const first = this.videos[0];
         const resolutionsMatch = this.videos.every(v => v.width === first.width && v.height === first.height);
 
-        this.panel.webview.postMessage({
+        this.post({
             type: 'init',
             isBatch: this.isBatch,
             videos: this.videos,
@@ -142,8 +164,22 @@ export class EditPanel {
                 break;
 
             case 'requestFrame': {
+                if (!this.ownsPath(msg.path)) { break; }
                 const dataUri = await ffmpeg.extractFrame(msg.path, msg.atSeconds);
-                this.panel.webview.postMessage({ type: 'frame', reqId: msg.reqId, dataUri });
+                this.post({ type: 'frame', reqId: msg.reqId, dataUri });
+                break;
+            }
+
+            case 'requestPreviewProxy': {
+                if (!this.ownsPath(msg.path)) { break; }
+                let src: string | undefined, error: string | undefined;
+                try {
+                    const proxy = await this.previewProxy(msg.path, msg.mode);
+                    src = this.panel.webview.asWebviewUri(vscode.Uri.file(proxy)).toString();
+                } catch (e) {
+                    error = e instanceof Error ? e.message : String(e);
+                }
+                this.post({ type: 'previewProxy', reqId: msg.reqId, src, error });
                 break;
             }
 
@@ -151,6 +187,31 @@ export class EditPanel {
                 await this.applyEdits(msg.trim, msg.crops, msg.resize);
                 break;
         }
+    }
+
+    /** Only act on files this panel was opened for; the webview shouldn't reach arbitrary paths */
+    private ownsPath(filePath: string): boolean {
+        return this.videos.some(v => v.path === filePath);
+    }
+
+    private post(message: unknown) {
+        if (!this.disposed) {
+            this.panel.webview.postMessage(message);
+        }
+    }
+
+    /** Returns a cached browser-playable copy of a video, creating it if needed */
+    private async previewProxy(filePath: string, mode: 'remux' | 'transcode'): Promise<string> {
+        const stat = fs.statSync(filePath);
+        const key = createHash('sha1').update(`${filePath}|${stat.size}|${stat.mtimeMs}|${mode}`).digest('hex');
+        const output = path.join(ffmpeg.previewProxyDir, `${key}.mp4`);
+        if (fs.existsSync(output)) {
+            return output;
+        }
+
+        const info = await ffprobe.getVideoInfo(filePath).catch(() => null);
+        await ffmpeg.makePreviewProxy(filePath, output, mode, !!info?.isHEVC, this.work.token);
+        return output;
     }
 
     private async applyEdits(

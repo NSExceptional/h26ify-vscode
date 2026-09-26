@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src {{CSP_SOURCE}}; style-src 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Edit Video</title>
 <style>
@@ -97,14 +97,77 @@
   .section-body { padding: 4px 16px 18px 38px; display: none; }
   .section.expanded .section-body { display: block; }
 
+  /* ---- Trim preview + transport ---- */
+  .trim-preview {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 120px;
+    margin-bottom: 10px;
+    background: #000;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .trim-preview video { display: block; max-width: 100%; max-height: 320px; cursor: pointer; }
+  .trim-preview-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    text-align: center;
+    color: #ddd;
+    background: rgba(0,0,0,.65);
+  }
+  .trim-transport { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .trim-transport .spacer { flex: 1; }
+  .trim-transport select {
+    max-width: 200px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    padding: 3px 6px;
+    border-radius: 2px;
+  }
+  .trim-time { margin-right: 6px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+  .icon-btn { width: 30px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+
   /* ---- Trim (filmstrip) ---- */
+  .trim-timeline { position: relative; touch-action: none; }
   .trim-ruler {
     display: flex;
     justify-content: space-between;
+    height: 16px;
+    line-height: 16px;
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .trim-playhead { position: absolute; top: 0; bottom: 0; width: 0; z-index: 3; pointer-events: none; }
+  .trim-playhead .knob {
+    position: absolute;
+    top: 13px;
+    left: -6px;
+    width: 12px;
+    height: 11px;
+    background: var(--vscode-foreground);
+    clip-path: polygon(0 0, 100% 0, 100% 50%, 50% 100%, 0 50%);
+    pointer-events: auto;
+    cursor: ew-resize;
+  }
+  .trim-playhead .line {
+    position: absolute;
+    top: 22px;
+    bottom: 0;
+    left: -1px;
+    width: 2px;
+    background: var(--vscode-foreground);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.35);
   }
   .trim-track {
     position: relative;
@@ -127,7 +190,7 @@
     pointer-events: none;
   }
   .trim-handle {
-    position: absolute; top: 0; bottom: 0;
+    position: absolute; top: 24px; height: 52px;
     width: 10px; margin-left: -5px;
     background: var(--vscode-focusBorder);
     cursor: ew-resize;
@@ -136,6 +199,7 @@
     z-index: 2;
     touch-action: none;
   }
+  .trim-handle::before { content: ''; position: absolute; top: 0; bottom: 0; left: -4px; right: -4px; } /* easier to grab */
   .trim-handle .grip { width: 2px; height: 16px; background: rgba(255,255,255,.75); border-radius: 1px; }
   .trim-inputs { display: flex; gap: 18px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
   .trim-inputs label { display: flex; align-items: center; gap: 8px; }
@@ -336,13 +400,30 @@
     <span class="section-summary" id="trim-summary"></span>
   </div>
   <div class="section-body" id="trim-body">
-    <div class="trim-ruler" id="trim-ruler"></div>
-    <div class="trim-track" id="trim-track">
-      <div class="trim-dim left" id="trim-dim-left"></div>
-      <div class="trim-dim right" id="trim-dim-right"></div>
-      <div class="trim-selection" id="trim-selection"></div>
+    <div class="trim-preview">
+      <video id="trim-video" preload="auto" playsinline></video>
+      <div class="trim-preview-status hidden" id="trim-preview-status"></div>
+    </div>
+    <div class="trim-transport">
+      <button class="icon-btn" id="trim-play" title="Play (Space)"></button>
+      <span class="trim-time"><span id="trim-current">0:00.00</span> / <span id="trim-duration">0:00.00</span></span>
+      <button id="trim-set-start" title="Set the start to the playhead (I)">Set start</button>
+      <button id="trim-set-end" title="Set the end to the playhead (O)">Set end</button>
+      <span class="spacer"></span>
+      <select id="trim-preview-select" class="hidden" title="Video to preview"></select>
+      <button class="icon-btn" id="trim-loop" title="Loop the selection"></button>
+      <button class="icon-btn" id="trim-mute" title="Mute"></button>
+    </div>
+    <div class="trim-timeline" id="trim-timeline">
+      <div class="trim-ruler" id="trim-ruler"></div>
+      <div class="trim-track" id="trim-track">
+        <div class="trim-dim left" id="trim-dim-left"></div>
+        <div class="trim-dim right" id="trim-dim-right"></div>
+        <div class="trim-selection" id="trim-selection"></div>
+      </div>
       <div class="trim-handle" id="handle-start" title="Start"><span class="grip"></span></div>
       <div class="trim-handle" id="handle-end" title="End"><span class="grip"></span></div>
+      <div class="trim-playhead" id="trim-playhead"><span class="knob"></span><span class="line"></span></div>
     </div>
     <div class="trim-inputs">
       <label><span>Start</span> <input type="text" id="trim-start" placeholder="0:00"></label>
@@ -567,6 +648,10 @@
     const msg = event.data;
     if (msg.type === 'init') { handleInit(msg); }
     else if (msg.type === 'loadPreset') { applyPreset(msg.preset); }
+    else if (msg.type === 'previewProxy') {
+      const cb = _proxyCbs[msg.reqId];
+      if (cb) { delete _proxyCbs[msg.reqId]; cb(msg.src, msg.error); }
+    }
     else if (msg.type === 'frame') {
       const cb = _frameCbs[msg.reqId];
       if (cb) { delete _frameCbs[msg.reqId]; cb(msg.dataUri); }
@@ -663,7 +748,7 @@
   // ── Section summaries + footer ──────────────────────────────────────────────
   function updateTrimSummary() {
     els('trim-summary').textContent = els('trim-enabled').checked
-      ? `${formatTime(trimStart)} – ${formatTime(trimEnd)}` : '';
+      ? `${formatTimePrecise(trimStart)} – ${formatTimePrecise(trimEnd)}` : '';
   }
   function updateCropSummary() {
     let txt = '';
@@ -818,17 +903,67 @@
     els('delete-preset-btn').classList.add('hidden');
   });
 
-  // ── Trim (filmstrip control) ────────────────────────────────────────────────
+  // ── Trim (preview + filmstrip control) ─────────────────────────────────────
+  const ICON_PLAY = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>';
+  const ICON_PAUSE = '<svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="1.5" width="2.5" height="9" rx=".5" fill="currentColor"/><rect x="7" y="1.5" width="2.5" height="9" rx=".5" fill="currentColor"/></svg>';
+  const ICON_SPEAKER = '<path d="M2.5 6h2.5l3.5-3v10l-3.5-3h-2.5z" fill="currentColor"/>';
+  const ICON_SOUND = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none">${ICON_SPEAKER}<path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+  const ICON_MUTED = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none">${ICON_SPEAKER}<path d="M11 6l4 4M15 6l-4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+  const ICON_LOOP = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 7V6a2 2 0 0 1 2-2h7M10 2l2 2-2 2M13 9v1a2 2 0 0 1-2 2H4M6 14l-2-2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const FRAME_STEP = 1 / 30;
+
+  const trimVideo = els('trim-video');
+  let playheadTime = 0;
+  let previewIndex = 0;       // which selected video the preview shows
+  let previewLoadedFor = -1;  // index whose media is loading or loaded
+  let previewReady = false;
+  let loopSelection = false;
+  let playStopAt = null;      // pause (or loop) here; null = play to the end of the video
+  let playRAF = null;
+
+  els('trim-play').innerHTML = ICON_PLAY;
+  els('trim-loop').innerHTML = ICON_LOOP;
+  els('trim-mute').innerHTML = ICON_SOUND;
+
   function initTrim() {
     buildRuler();
     updateTrimUI();
+    updatePlayhead();
     setupTrimDrag();
+    els('trim-duration').textContent = formatTimePrecise(videoDuration);
+
+    if (videos.length > 1) {
+      const sel = els('trim-preview-select');
+      sel.innerHTML = '';
+      videos.forEach((v, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = v.filename;
+        sel.appendChild(opt);
+      });
+      sel.classList.remove('hidden');
+    }
+
+    // Only load (and possibly convert) the video once the section is actually open
+    new MutationObserver(onTrimVisibility).observe(els('trim-section'), { attributes: true, attributeFilter: ['class'] });
+    onTrimVisibility();
+  }
+
+  function onTrimVisibility() {
+    if (els('trim-section').classList.contains('expanded')) {
+      if (previewLoadedFor !== previewIndex) { loadPreview(previewIndex); }
+    } else {
+      pausePreview();
+    }
   }
 
   function buildRuler() {
     const N = 5; // 6 evenly spaced labels
+    const step = videoDuration / N;
     let html = '';
-    for (let i = 0; i <= N; i++) { html += `<span>${formatTime(videoDuration * i / N)}</span>`; }
+    for (let i = 0; i <= N; i++) {
+      html += `<span>${step < 1 ? formatTimePrecise(step * i, 1) : formatTime(step * i)}</span>`;
+    }
     els('trim-ruler').innerHTML = html;
   }
 
@@ -843,13 +978,13 @@
     els('handle-start').style.left = sp + '%';
     els('handle-end').style.left = ep + '%';
     updateTrimInputs();
-    els('trim-selected').textContent = formatTime(trimEnd - trimStart);
+    els('trim-selected').textContent = formatTimePrecise(trimEnd - trimStart);
     updateTrimSummary();
   }
 
   function updateTrimInputs() {
-    els('trim-start').value = formatTime(trimStart);
-    els('trim-end').value = formatTime(trimEnd);
+    els('trim-start').value = formatTimePrecise(trimStart);
+    els('trim-end').value = formatTimePrecise(trimEnd);
   }
 
   function ensureTrimEnabled() {
@@ -860,33 +995,213 @@
     }
   }
 
+  // ── Preview loading: the original file, else a remuxed copy, else a transcoded proxy
+  function setPreviewStatus(text) {
+    const st = els('trim-preview-status');
+    st.textContent = text || '';
+    st.classList.toggle('hidden', !text);
+  }
+
+  function loadPreview(i) {
+    pausePreview();
+    previewLoadedFor = i;
+    previewReady = false;
+    setPreviewStatus('Loading preview…');
+    attemptPreview(i, 'native', videos[i].src);
+  }
+
+  function attemptPreview(i, stage, src) {
+    const cleanup = () => {
+      trimVideo.removeEventListener('loadeddata', onLoaded);
+      trimVideo.removeEventListener('error', onError);
+    };
+    // A remux can't help a codec the webview can't decode, so that case goes straight to transcoding
+    const fallback = undecodable => {
+      const mode = stage === 'native' && !undecodable ? 'remux' : stage === 'transcode' ? null : 'transcode';
+      if (mode) { requestProxy(i, mode); }
+      else { setPreviewStatus('This video can’t be previewed.'); }
+    };
+    const onLoaded = () => {
+      cleanup();
+      if (previewLoadedFor !== i) { return; }
+      if (!trimVideo.videoWidth) { fallback(true); return; } // audio played, video track didn't
+      previewReady = true;
+      setPreviewStatus(null);
+      trimVideo.currentTime = playheadTime;
+    };
+    const onError = () => {
+      cleanup();
+      if (previewLoadedFor === i) { fallback(false); }
+    };
+    trimVideo.addEventListener('loadeddata', onLoaded);
+    trimVideo.addEventListener('error', onError);
+    trimVideo.src = src;
+  }
+
+  let _proxySeq = 0;
+  const _proxyCbs = {};
+  function requestProxy(i, mode) {
+    setPreviewStatus(mode === 'remux'
+      ? 'Preparing preview…'
+      : 'Converting video for preview… this can take a while for long videos.');
+    const reqId = ++_proxySeq;
+    _proxyCbs[reqId] = (src, error) => {
+      if (previewLoadedFor !== i) { return; }
+      if (src) { attemptPreview(i, mode, src); }
+      else if (mode === 'remux') { requestProxy(i, 'transcode'); }
+      else { setPreviewStatus('Preview unavailable: ' + (error || 'conversion failed')); }
+    };
+    vscode.postMessage({ type: 'requestPreviewProxy', reqId, path: videos[i].path, mode });
+  }
+
+  // ── Playhead + playback
+  function updatePlayhead() {
+    els('trim-playhead').style.left = trimPct(playheadTime) + '%';
+    els('trim-current').textContent = formatTimePrecise(playheadTime);
+  }
+
+  function seekTo(t) {
+    playheadTime = clamp(t, 0, videoDuration);
+    if (previewReady) { trimVideo.currentTime = Math.min(playheadTime, trimVideo.duration || playheadTime); }
+    updatePlayhead();
+  }
+
+  function setPlayIcon(playing) {
+    els('trim-play').innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+    els('trim-play').title = playing ? 'Pause (Space)' : 'Play (Space)';
+  }
+
+  function inSelection() { return playheadTime >= trimStart - 0.001 && playheadTime < trimEnd - 0.02; }
+
+  // Inside the selection, playback stops (or loops) at its end; outside it, plays to the end of the video
+  function playPreview() {
+    if (!previewReady) { return; }
+    if (!inSelection() && (Math.abs(playheadTime - trimEnd) < 0.05 || playheadTime >= videoDuration - 0.05)) {
+      seekTo(trimStart); // replay the selection after it finished
+    }
+    playStopAt = inSelection() ? trimEnd : null;
+    trimVideo.play().catch(() => setPlayIcon(false));
+    setPlayIcon(true);
+    cancelAnimationFrame(playRAF);
+    playRAF = requestAnimationFrame(tick);
+  }
+
+  function tick() {
+    if (trimVideo.paused) { return; }
+    playheadTime = trimVideo.currentTime;
+    if (playStopAt !== null && playheadTime >= playStopAt) {
+      if (loopSelection) {
+        seekTo(trimStart);
+      } else {
+        pausePreview();
+        seekTo(playStopAt);
+        return;
+      }
+    }
+    updatePlayhead();
+    playRAF = requestAnimationFrame(tick);
+  }
+
+  function pausePreview() {
+    trimVideo.pause();
+    cancelAnimationFrame(playRAF);
+    setPlayIcon(false);
+  }
+
+  function togglePlay() { trimVideo.paused ? playPreview() : pausePreview(); }
+
+  function setStartAtPlayhead() {
+    trimStart = Math.min(playheadTime, trimEnd - 0.1);
+    ensureTrimEnabled();
+    updateTrimUI();
+  }
+
+  function setEndAtPlayhead() {
+    trimEnd = Math.max(playheadTime, trimStart + 0.1);
+    ensureTrimEnabled();
+    updateTrimUI();
+  }
+
+  // Dragging the playhead, ruler, or track scrubs; dragging a handle moves it and shows that frame
   function setupTrimDrag() {
     const track = els('trim-track');
-    let dragging = null;
+    let dragging = null; // 'playhead' | 'start' | 'end'
 
-    const pctFromX = clientX => {
+    const timeFromX = clientX => {
       const r = track.getBoundingClientRect();
-      return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+      return clamp((clientX - r.left) / r.width, 0, 1) * videoDuration;
     };
     const applyDrag = clientX => {
-      const t = pctFromX(clientX) * videoDuration;
-      if (dragging === 'start') { trimStart = Math.min(t, trimEnd - 0.1); }
-      else { trimEnd = Math.max(t, trimStart + 0.1); }
+      const t = timeFromX(clientX);
+      if (dragging === 'playhead') { seekTo(t); return; }
+      if (dragging === 'start') { trimStart = Math.min(t, trimEnd - 0.1); seekTo(trimStart); }
+      else { trimEnd = Math.max(t, trimStart + 0.1); seekTo(trimEnd); }
       updateTrimUI();
     };
-
-    track.addEventListener('pointerdown', e => {
-      const t = pctFromX(e.clientX) * videoDuration;
-      dragging = Math.abs(t - trimStart) < Math.abs(t - trimEnd) ? 'start' : 'end';
-      ensureTrimEnabled();
-      applyDrag(e.clientX);
+    const begin = (mode, e) => {
       e.preventDefault();
-    });
-    els('handle-start').addEventListener('pointerdown', e => { e.stopPropagation(); dragging = 'start'; ensureTrimEnabled(); e.preventDefault(); });
-    els('handle-end').addEventListener('pointerdown', e => { e.stopPropagation(); dragging = 'end'; ensureTrimEnabled(); e.preventDefault(); });
+      e.stopPropagation();
+      pausePreview();
+      dragging = mode;
+      if (mode === 'playhead') {
+        applyDrag(e.clientX);
+      } else {
+        ensureTrimEnabled();
+        seekTo(mode === 'start' ? trimStart : trimEnd);
+      }
+    };
+
+    els('trim-timeline').addEventListener('pointerdown', e => begin('playhead', e));
+    els('handle-start').addEventListener('pointerdown', e => begin('start', e));
+    els('handle-end').addEventListener('pointerdown', e => begin('end', e));
     window.addEventListener('pointermove', e => { if (dragging) { applyDrag(e.clientX); } });
     window.addEventListener('pointerup', () => { dragging = null; });
   }
+
+  els('trim-play').addEventListener('click', togglePlay);
+  trimVideo.addEventListener('click', togglePlay);
+  els('trim-set-start').addEventListener('click', setStartAtPlayhead);
+  els('trim-set-end').addEventListener('click', setEndAtPlayhead);
+  els('trim-loop').addEventListener('click', () => {
+    loopSelection = !loopSelection;
+    els('trim-loop').classList.toggle('active', loopSelection);
+  });
+  els('trim-mute').addEventListener('click', () => {
+    trimVideo.muted = !trimVideo.muted;
+    els('trim-mute').innerHTML = trimVideo.muted ? ICON_MUTED : ICON_SOUND;
+    els('trim-mute').title = trimVideo.muted ? 'Unmute' : 'Mute';
+  });
+  els('trim-preview-select').addEventListener('change', e => {
+    previewIndex = Number(e.target.value);
+    loadPreview(previewIndex);
+  });
+  trimVideo.addEventListener('ended', () => {
+    pausePreview();
+    playheadTime = videoDuration;
+    updatePlayhead();
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { pausePreview(); } });
+
+  // Space: play/pause · I/O: set start/end · ←/→: step a frame (Shift: 1s)
+  document.addEventListener('keydown', e => {
+    if (!els('trim-section').classList.contains('expanded')) { return; }
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, select, textarea')) { return; }
+    const k = e.key;
+    if (k === ' ') {
+      if (e.target.closest('button')) { return; } // the focused button's own click handles it
+      togglePlay();
+    } else if (k === 'i' || k === 'I') {
+      setStartAtPlayhead();
+    } else if (k === 'o' || k === 'O') {
+      setEndAtPlayhead();
+    } else if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      pausePreview();
+      seekTo(playheadTime + (k === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : FRAME_STEP));
+    } else {
+      return;
+    }
+    e.preventDefault();
+  });
 
   function parseTime(str) {
     str = str.trim();
@@ -907,15 +1222,27 @@
 
   function pad(n) { return String(n).padStart(2, '0'); }
 
+  /** e.g. `"1:05.25"`; trim times need sub-second precision */
+  function formatTimePrecise(s, digits = 2) {
+    const f = Math.pow(10, digits);
+    s = Math.round(Math.max(0, s) * f) / f;
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = (s % 60).toFixed(digits).padStart(digits + 3, '0');
+    return h > 0 ? `${h}:${pad(m)}:${sec}` : `${m}:${sec}`;
+  }
+
   els('trim-start').addEventListener('change', () => {
     trimStart = Math.max(0, Math.min(parseTime(els('trim-start').value), trimEnd - 0.1));
     ensureTrimEnabled();
     updateTrimUI();
+    seekTo(trimStart);
   });
   els('trim-end').addEventListener('change', () => {
     trimEnd = Math.min(videoDuration, Math.max(parseTime(els('trim-end').value), trimStart + 0.1));
     ensureTrimEnabled();
     updateTrimUI();
+    seekTo(trimEnd);
   });
 
   // ── Scrubber ──────────────────────────────────────────────────────────────
