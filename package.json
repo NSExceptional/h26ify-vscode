@@ -217,7 +217,8 @@
         "watch": "tsc -watch -p ./",
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint src",
-        "test": "vscode-test"
+        "test": "vscode-test",
+        "install-ext": "vsce package --out h26ify.vsix && code --install-extension h26ify.vsix --force"
     },
     "devDependencies": {
         "@types/mocha": "^10.0.10",
@@ -227,6 +228,7 @@
         "@typescript-eslint/parser": "^8.31.1",
         "@vscode/test-cli": "^0.0.10",
         "@vscode/test-electron": "^2.5.2",
+        "@vscode/vsce": "^4.0.0",
         "eslint": "^9.25.1",
         "typescript": "^5.8.3",
         "vitest": "^3.2.4"
