@@ -17,3 +17,4 @@ done.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+.playwright-mcp/**
