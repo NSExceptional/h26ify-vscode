@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src {{CSP_SOURCE}}; style-src 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src {{CSP_SOURCE}} http://127.0.0.1:*; style-src 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Edit Video</title>
 <style>
@@ -131,6 +131,7 @@
     padding: 3px 6px;
     border-radius: 2px;
   }
+  .trim-audio-status { color: var(--vscode-descriptionForeground); font-size: 0.9em; font-variant-numeric: tabular-nums; }
   .trim-time { margin-right: 6px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
   .icon-btn { width: 30px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 
@@ -409,6 +410,7 @@
       <span class="trim-time"><span id="trim-current">0:00.00</span> / <span id="trim-duration">0:00.00</span></span>
       <button id="trim-set-start" title="Set the start to the playhead (I)">Set start</button>
       <button id="trim-set-end" title="Set the end to the playhead (O)">Set end</button>
+      <span class="trim-audio-status hidden" id="trim-audio-status"></span>
       <span class="spacer"></span>
       <select id="trim-preview-select" class="hidden" title="Video to preview"></select>
       <button class="icon-btn" id="trim-loop" title="Loop the selection"></button>
@@ -648,9 +650,12 @@
     const msg = event.data;
     if (msg.type === 'init') { handleInit(msg); }
     else if (msg.type === 'loadPreset') { applyPreset(msg.preset); }
-    else if (msg.type === 'previewProxy') {
-      const cb = _proxyCbs[msg.reqId];
-      if (cb) { delete _proxyCbs[msg.reqId]; cb(msg.src, msg.error); }
+    else if (msg.type === 'previewProgress') {
+      _mediaCbs[msg.reqId]?.onProgress(msg.fraction);
+    }
+    else if (msg.type === 'previewMedia') {
+      const cb = _mediaCbs[msg.reqId];
+      if (cb) { delete _mediaCbs[msg.reqId]; cb.onDone(msg); }
     }
     else if (msg.type === 'frame') {
       const cb = _frameCbs[msg.reqId];
@@ -995,72 +1000,174 @@
     }
   }
 
-  // ── Preview loading: the original file, else a remuxed copy, else a transcoded proxy
+  // ── Preview loading
+  // Video: the original file, else a video-only copy (remux, then transcode), each with progress.
+  // Audio: VS Code's webview can't decode AAC (most MP4/MOVs), so for those, and for the
+  // video-only copies, a separate MP3 track is extracted and played in sync with the video.
+  const NATIVE_AUDIO = new Set(['mp3', 'flac']);
+  const trimAudio = new Audio();
+  trimAudio.preload = 'auto';
+  let audioTrackFor = -1;       // video index whose separate audio track is requested
+  let audioTrackReady = false;  // the separate track is loaded and supplies the sound
+  let userMuted = false;
+
   function setPreviewStatus(text) {
     const st = els('trim-preview-status');
     st.textContent = text || '';
     st.classList.toggle('hidden', !text);
   }
 
-  // Audio codecs VS Code's webview can decode. It silently plays AAC with no sound,
-  // so those videos get a copy with MP3 audio (the video stream is copied as-is).
-  const NATIVE_AUDIO = new Set(['mp3', 'flac']);
+  function setAudioStatus(text) {
+    const st = els('trim-audio-status');
+    st.textContent = text || '';
+    st.classList.toggle('hidden', !text);
+  }
+
+  function percent(fraction) { return Math.round(fraction * 100) + '%'; }
 
   function loadPreview(i) {
     pausePreview();
     previewLoadedFor = i;
     previewReady = false;
-    const audio = videos[i].audioCodec;
-    if (audio && !NATIVE_AUDIO.has(audio)) {
-      requestProxy(i, 'remux');
-      return;
+    detachAudioTrack();
+    const v = videos[i];
+    if (v.audioCodec && !NATIVE_AUDIO.has(v.audioCodec)) {
+      loadAudioTrack(i);
     }
     setPreviewStatus('Loading preview…');
-    attemptPreview(i, 'native', videos[i].src);
+    attemptPreview(i, 'native', [v.src, v.resourceSrc]);
   }
 
-  function attemptPreview(i, stage, src) {
+  /** Plays the first of `sources` that loads; `stage` is which file they are (original or a copy) */
+  function attemptPreview(i, stage, sources) {
+    sources = sources.filter(Boolean);
     const cleanup = () => {
       trimVideo.removeEventListener('loadeddata', onLoaded);
       trimVideo.removeEventListener('error', onError);
     };
     // A remux can't help a codec the webview can't decode, so that case goes straight to transcoding
     const fallback = undecodable => {
-      const mode = stage === 'native' && !undecodable ? 'remux' : stage === 'transcode' ? null : 'transcode';
-      if (mode) { requestProxy(i, mode); }
-      else { setPreviewStatus('This video can’t be previewed.'); }
+      const kind = stage === 'native' && !undecodable ? 'remux' : stage === 'transcode' ? null : 'transcode';
+      if (!kind) {
+        setPreviewStatus('This video can’t be previewed.');
+        return;
+      }
+      // Copies are video-only, so their sound comes from the separate audio track
+      if (videos[i].audioCodec) { loadAudioTrack(i); }
+      requestVideoCopy(i, kind);
     };
     const onLoaded = () => {
       cleanup();
       if (previewLoadedFor !== i) { return; }
-      if (!trimVideo.videoWidth) { fallback(true); return; } // audio played, video track didn't
+      if (!trimVideo.videoWidth) { fallback(true); return; } // audio decoded, video track didn't
       previewReady = true;
       setPreviewStatus(null);
       trimVideo.currentTime = playheadTime;
+      applyMute();
     };
     const onError = () => {
       cleanup();
-      if (previewLoadedFor === i) { fallback(false); }
+      if (previewLoadedFor !== i) { return; }
+      if (sources.length > 1) { attemptPreview(i, stage, sources.slice(1)); }
+      else { fallback(false); }
     };
     trimVideo.addEventListener('loadeddata', onLoaded);
     trimVideo.addEventListener('error', onError);
-    trimVideo.src = src;
+    trimVideo.src = sources[0];
   }
 
-  let _proxySeq = 0;
-  const _proxyCbs = {};
-  function requestProxy(i, mode) {
-    setPreviewStatus(mode === 'remux'
-      ? 'Preparing preview audio…'
-      : 'Converting video for preview… this can take a while for long videos.');
-    const reqId = ++_proxySeq;
-    _proxyCbs[reqId] = (src, error) => {
-      if (previewLoadedFor !== i) { return; }
-      if (src) { attemptPreview(i, mode, src); }
-      else if (mode === 'remux') { requestProxy(i, 'transcode'); }
-      else { setPreviewStatus('Preview unavailable: ' + (error || 'conversion failed')); }
+  function requestVideoCopy(i, kind) {
+    const label = kind === 'remux' ? 'Preparing preview' : 'Converting video for preview';
+    setPreviewStatus(label + '…');
+    requestMedia(i, kind,
+      fraction => { if (previewLoadedFor === i) { setPreviewStatus(`${label}… ${percent(fraction)}`); } },
+      ({ src, resourceSrc, error }) => {
+        if (previewLoadedFor !== i) { return; }
+        if (src || resourceSrc) { attemptPreview(i, kind, [src, resourceSrc]); }
+        else if (kind === 'remux') { requestVideoCopy(i, 'transcode'); }
+        else { setPreviewStatus('Preview unavailable: ' + (error || 'conversion failed')); }
+      });
+  }
+
+  function loadAudioTrack(i) {
+    if (audioTrackFor === i) { return; }
+    audioTrackFor = i;
+    setAudioStatus('Preparing audio…');
+    requestMedia(i, 'audio',
+      fraction => { if (audioTrackFor === i) { setAudioStatus(`Preparing audio… ${percent(fraction)}`); } },
+      ({ src, resourceSrc, error }) => {
+        if (audioTrackFor !== i) { return; }
+        const sources = [src, resourceSrc].filter(Boolean);
+        if (!sources.length) {
+          setAudioStatus('No audio: ' + (error || 'conversion failed'));
+          return;
+        }
+        attachAudioTrack(i, sources);
+      });
+  }
+
+  function attachAudioTrack(i, sources) {
+    const cleanup = () => {
+      trimAudio.removeEventListener('canplay', onReady);
+      trimAudio.removeEventListener('error', onError);
     };
-    vscode.postMessage({ type: 'requestPreviewProxy', reqId, path: videos[i].path, mode });
+    const onReady = () => {
+      cleanup();
+      if (audioTrackFor !== i) { return; }
+      audioTrackReady = true;
+      setAudioStatus(null);
+      applyMute();
+      syncAudio(true);
+    };
+    const onError = () => {
+      cleanup();
+      if (audioTrackFor !== i) { return; }
+      if (sources.length > 1) { attachAudioTrack(i, sources.slice(1)); }
+      else { setAudioStatus('No audio: the audio track couldn’t be played'); }
+    };
+    trimAudio.addEventListener('canplay', onReady);
+    trimAudio.addEventListener('error', onError);
+    trimAudio.src = sources[0];
+  }
+
+  function detachAudioTrack() {
+    audioTrackFor = -1;
+    audioTrackReady = false;
+    trimAudio.pause();
+    trimAudio.removeAttribute('src');
+    trimAudio.load();
+    setAudioStatus(null);
+    applyMute();
+  }
+
+  // With a separate audio track, the video (whose own audio is silent or absent) stays muted
+  function applyMute() {
+    trimVideo.muted = userMuted || audioTrackReady;
+    trimAudio.muted = userMuted;
+    els('trim-mute').innerHTML = userMuted ? ICON_MUTED : ICON_SOUND;
+    els('trim-mute').title = userMuted ? 'Unmute' : 'Mute';
+  }
+
+  /** Keeps the separate audio track playing in step with the video */
+  function syncAudio(force) {
+    if (!audioTrackReady) { return; }
+    if (force || Math.abs(trimAudio.currentTime - trimVideo.currentTime) > 0.15) {
+      trimAudio.currentTime = trimVideo.currentTime;
+    }
+    if (trimVideo.paused) {
+      trimAudio.pause();
+    } else if (trimAudio.paused) {
+      trimAudio.play().catch(() => {});
+    }
+  }
+
+  let _mediaSeq = 0;
+  const _mediaCbs = {};
+  /** Asks the extension for a playable preview file; reports progress, then `{ src, resourceSrc }` or `{ error }` */
+  function requestMedia(i, kind, onProgress, onDone) {
+    const reqId = ++_mediaSeq;
+    _mediaCbs[reqId] = { onProgress, onDone };
+    vscode.postMessage({ type: 'requestPreviewMedia', reqId, path: videos[i].path, kind });
   }
 
   // ── Playhead + playback
@@ -1072,6 +1179,7 @@
   function seekTo(t) {
     playheadTime = clamp(t, 0, videoDuration);
     if (previewReady) { trimVideo.currentTime = Math.min(playheadTime, trimVideo.duration || playheadTime); }
+    if (audioTrackReady) { trimAudio.currentTime = playheadTime; }
     updatePlayhead();
   }
 
@@ -1090,6 +1198,7 @@
     }
     playStopAt = inSelection() ? trimEnd : null;
     trimVideo.play().catch(() => setPlayIcon(false));
+    syncAudio(true);
     setPlayIcon(true);
     cancelAnimationFrame(playRAF);
     playRAF = requestAnimationFrame(tick);
@@ -1098,6 +1207,7 @@
   function tick() {
     if (trimVideo.paused) { return; }
     playheadTime = trimVideo.currentTime;
+    syncAudio(false);
     if (playStopAt !== null && playheadTime >= playStopAt) {
       if (loopSelection) {
         seekTo(trimStart);
@@ -1113,6 +1223,7 @@
 
   function pausePreview() {
     trimVideo.pause();
+    trimAudio.pause();
     cancelAnimationFrame(playRAF);
     setPlayIcon(false);
   }
@@ -1176,9 +1287,8 @@
     els('trim-loop').classList.toggle('active', loopSelection);
   });
   els('trim-mute').addEventListener('click', () => {
-    trimVideo.muted = !trimVideo.muted;
-    els('trim-mute').innerHTML = trimVideo.muted ? ICON_MUTED : ICON_SOUND;
-    els('trim-mute').title = trimVideo.muted ? 'Unmute' : 'Mute';
+    userMuted = !userMuted;
+    applyMute();
   });
   els('trim-preview-select').addEventListener('change', e => {
     previewIndex = Number(e.target.value);

@@ -13,6 +13,9 @@ import { randomUUID } from 'crypto';
 import { spawnSync, spawn } from 'child_process';
 import { Util } from '../util';
 
+/** What the trim preview needs made playable; see `makePreviewMedia` */
+export type PreviewKind = 'audio' | 'remux' | 'transcode';
+
 export type FFmpegOptions = {
     input: string;
     output: string;
@@ -122,43 +125,58 @@ class ffmpeg extends EnvironmentCmd {
         return new RegExp(`\\s${name}\\s`).test(this.encoders);
     }
 
-    /** Where browser-playable preview copies of videos are cached */
-    readonly previewProxyDir = path.join(os.tmpdir(), 'h26ify-preview');
+    /** The audio format preview tracks use: MP3, or FLAC if this ffmpeg build lacks libmp3lame */
+    previewAudioExtension(): 'mp3' | 'flac' {
+        return this.hasEncoder('libmp3lame') ? 'mp3' : 'flac';
+    }
 
     /**
-     * Create a browser-playable copy of a video for previewing in a webview.
-     * `remux` copies the video stream into an MP4 container (fast, for containers the
-     * webview can't open, like MKV); `transcode` re-encodes to a 720p H.264 proxy (for
-     * video codecs it can't decode). Either way the audio becomes stereo MP3 (or FLAC).
-     * Writes to a temp file first so a cancelled run never leaves a partial output.
+     * Create a file the edit panel's webview can play for the trim preview:
+     * - `audio`: the first audio track as stereo MP3 (or FLAC). VS Code's webview can't
+     *   decode AAC, the audio in most MP4/MOVs, so it plays this alongside the video.
+     * - `remux`: the video stream copied into MP4, without audio (for containers the
+     *   webview can't open, like MKV).
+     * - `transcode`: a 720p H.264 copy, without audio (for video it can't decode).
+     * Writes to a temp file first so a cancelled or failed run never leaves a partial output.
      */
-    makePreviewProxy(
-        input: string, output: string, mode: 'remux' | 'transcode', isHEVC: boolean,
-        cancellationToken?: vscode.CancellationToken
+    makePreviewMedia(
+        input: string, output: string, kind: PreviewKind,
+        options: {
+            isHEVC?: boolean;
+            /** Source duration in seconds, used to report progress */
+            duration?: number;
+            onProgress?: (fraction: number) => void;
+            cancellationToken?: vscode.CancellationToken;
+        } = {}
     ): Promise<void> {
-        const tmp = `${output}.tmp.mp4`;
-        // VS Code's webview can't decode AAC (nearly every MP4/MOV's audio), but it can decode MP3/FLAC
-        const audioArgs = this.hasEncoder('libmp3lame')
-            ? ['-c:a', 'libmp3lame', '-b:a', '192k', '-ac', '2']
-            : ['-c:a', 'flac', '-ac', '2', '-strict', '-2'];
-        const videoArgs = mode === 'remux'
-            ? ['-c:v', 'copy', ...(isHEVC ? ['-tag:v', 'hvc1'] : [])]
-            : ['-vf', "scale=-2:'min(720,trunc(ih/2)*2)'", '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p'];
-        const args = [
-            '-y', '-v', 'error', '-i', input,
-            '-map', '0:v:0', '-map', '0:a:0?',
-            ...videoArgs,
-            ...audioArgs,
-            '-movflags', '+faststart',
-            tmp,
-        ];
+        const ext = path.extname(output);
+        const tmp = `${output}.tmp${ext}`;
+        const kindArgs = {
+            audio: this.previewAudioExtension() === 'mp3'
+                ? ['-map', '0:a:0', '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', '-ac', '2', '-compression_level', '9']
+                : ['-map', '0:a:0', '-vn', '-c:a', 'flac', '-ac', '2'],
+            remux: ['-map', '0:v:0', '-an', '-c:v', 'copy', ...(options.isHEVC ? ['-tag:v', 'hvc1'] : [])],
+            transcode: ['-map', '0:v:0', '-an', '-vf', "scale=-2:'min(720,trunc(ih/2)*2)'",
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p'],
+        }[kind];
+        const args = ['-y', '-v', 'error', '-nostats', '-progress', 'pipe:1', '-i', input, ...kindArgs, tmp];
 
         fs.mkdirSync(path.dirname(output), { recursive: true });
         return new Promise((resolve, reject) => {
-            const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+            const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
             let stderr = '';
             proc.stderr?.on('data', d => { stderr += d.toString(); });
-            const cancelSub = cancellationToken?.onCancellationRequested(() => proc.kill('SIGKILL'));
+
+            // -progress reports lines like `out_time_us=12345678`
+            proc.stdout?.on('data', d => {
+                const matches = [...d.toString().matchAll(/out_time_us=(\d+)/g)];
+                const last = matches.pop();
+                if (last && options.onProgress && options.duration) {
+                    options.onProgress(Math.min(1, Number(last[1]) / 1e6 / options.duration));
+                }
+            });
+
+            const cancelSub = options.cancellationToken?.onCancellationRequested(() => proc.kill('SIGKILL'));
             const fail = (message: string) => {
                 try { fs.unlinkSync(tmp); } catch { /* ignore */ }
                 reject(new Error(message));

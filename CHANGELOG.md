@@ -2,6 +2,15 @@
 
 All notable changes to the "h26ify" extension are documented here.
 
+## [Unreleased]
+
+### Fixed
+- Large videos took seconds to minutes to appear in the trim preview (and to seek), because VS Code's webview reads local files from the start. Videos are now served to the preview with proper range requests: the first frame and seeks take milliseconds.
+- The trim preview no longer copies the whole video just to get audio. It plays the original and adds a small extracted MP3 track in sync, with progress shown, so the picture is usable right away.
+
+### Added
+- The trim preview's temporary files are capped by `h26ify.previewCacheLimitGB` (default 5 GB, least recently used first), pruned after a week, and can be cleared with **H26ify: Clear Preview Cache**. A full-size copy is only made if there's room for it.
+
 ## [2026.9.27]
 
 ### Added

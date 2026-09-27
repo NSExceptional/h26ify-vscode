@@ -16,6 +16,7 @@ import TranscodeTaskManager from '../video/task-manager';
 import { TranscodeTask } from '../video/transcode-task';
 import { EditPanel } from '../views/edit-panel';
 import { VideosViewProvider } from '../views/videos-provider';
+import { PreviewCache } from '../video/preview-cache';
 
 export class VideoCommands extends Commands {
     private dataSource: VideoDataSource = VideoDataSource.shared;
@@ -225,6 +226,14 @@ export class VideoCommands extends Commands {
             return;
         }
         EditPanel.open(Commands.context, videos);
+    }
+
+    @cmd('h26ify.clearPreviewCache')
+    async clearPreviewCache() {
+        const { files, bytes } = PreviewCache.shared.clear();
+        vscode.window.showInformationMessage(files
+            ? `Cleared ${files} preview file${files === 1 ? '' : 's'} (${(bytes / 1024 ** 2).toFixed(1)} MB).`
+            : 'The preview cache is already empty.');
     }
 
     /** Inline action: reveal a video file in Finder/Explorer. */

@@ -14,6 +14,7 @@ interface H26ifyConfig {
     outputFileStrategy: OutputFileStrategy;
     originalFileHandling: OriginalFileHandling;
     overwriteExisting: boolean;
+    previewCacheLimitGB: number;
 }
 
 class Config implements H26ifyConfig {
@@ -24,6 +25,7 @@ class Config implements H26ifyConfig {
     public outputFileStrategy: OutputFileStrategy = 'useTemplate';
     public originalFileHandling: OriginalFileHandling = 'trash';
     public overwriteExisting: boolean = false;
+    public previewCacheLimitGB: number = 5;
 
     constructor() {
         this.update();
@@ -67,6 +69,12 @@ class Config implements H26ifyConfig {
         const overwriteExisting = config.get<boolean>('overwriteExisting');
         if (overwriteExisting !== undefined) {
             this.overwriteExisting = overwriteExisting;
+        }
+
+        // Size cap for the trim preview's temporary files
+        const previewCacheLimitGB = config.get<number>('previewCacheLimitGB');
+        if (previewCacheLimitGB !== undefined && previewCacheLimitGB >= 0) {
+            this.previewCacheLimitGB = previewCacheLimitGB;
         }
     }
 }

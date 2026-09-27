@@ -9,12 +9,14 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import VideoItem from '../video/video-item';
-import ffmpeg, { FFmpegOptions } from '../cli/ffmpeg';
+import ffmpeg, { FFmpegOptions, PreviewKind } from '../cli/ffmpeg';
 import ffprobe from '../cli/ffprobe';
 import { EditPreset, EditPresetStorage } from '../video/edit-preset';
 import { VideoStorage } from '../video/video-storage';
+import { PreviewCache } from '../video/preview-cache';
+import { MediaServer } from './media-server';
 import config from '../config';
 import { Util } from '../util';
 
@@ -24,10 +26,13 @@ interface VideoMeta {
     width: number;
     height: number;
     duration: number;
-    /** Webview URI for playing the original file directly */
+    /** URL for playing the original file directly (served over localhost with range support) */
     src?: string;
+    /** Fallback for `src` via VS Code's own resource loading, which is slow for large files */
+    resourceSrc?: string;
     /** Codec of the first audio stream, if any; decides whether the webview can play it as-is */
     audioCodec?: string;
+    isHEVC?: boolean;
 }
 
 interface VideoCrop {
@@ -42,7 +47,7 @@ interface VideoCrop {
 type WebviewMessage =
     | { type: 'apply'; trim?: { start: number; end: number }; crops?: VideoCrop[]; resize?: { width: number; height: number } }
     | { type: 'requestFrame'; reqId: number; path: string; atSeconds: number }
-    | { type: 'requestPreviewProxy'; reqId: number; path: string; mode: 'remux' | 'transcode' }
+    | { type: 'requestPreviewMedia'; reqId: number; path: string; kind: PreviewKind }
     | { type: 'savePreset'; preset: EditPreset }
     | { type: 'deletePreset'; name: string }
     | { type: 'cancel' };
@@ -55,8 +60,12 @@ export class EditPanel {
     private videos: VideoMeta[];
     private readonly isBatch: boolean;
     private disposed = false;
-    /** Cancels in-flight preview proxy encodes when the panel closes */
+    /** Cancels in-flight preview encodes when the panel closes */
     private readonly work = new vscode.CancellationTokenSource();
+    /** Preview files this panel is using, so the cache won't evict them */
+    private readonly retained = new Set<string>();
+    /** Media server tokens for the files this panel plays */
+    private readonly servedTokens: string[] = [];
 
     static open(
         context: vscode.ExtensionContext,
@@ -76,7 +85,7 @@ export class EditPanel {
                 localResourceRoots: [
                     vscode.Uri.joinPath(context.extensionUri, 'media'),
                     ...[...new Set(itemsArr.map(i => path.dirname(i.uri.fsPath)))].map(d => vscode.Uri.file(d)),
-                    vscode.Uri.file(ffmpeg.previewProxyDir),
+                    vscode.Uri.file(PreviewCache.shared.dir),
                 ],
                 retainContextWhenHidden: true,
             }
@@ -104,6 +113,9 @@ export class EditPanel {
             this.disposed = true;
             this.work.cancel();
             this.work.dispose();
+            this.retained.forEach(f => PreviewCache.shared.release(f));
+            this.servedTokens.forEach(t => MediaServer.shared.revoke(t));
+            PreviewCache.shared.enforceLimit();
         });
 
         // Send init data asynchronously after the panel is shown
@@ -132,12 +144,13 @@ export class EditPanel {
                     v.height = info.height ?? v.height;
                     v.duration = info.duration ?? v.duration;
                     v.audioCodec = info.audioCodec;
+                    v.isHEVC = info.isHEVC;
                 }
             } catch { /* keep existing values */ }
         }));
 
         for (const v of this.videos) {
-            v.src = this.panel.webview.asWebviewUri(vscode.Uri.file(v.path)).toString();
+            Object.assign(v, await this.playableSources(v.path));
         }
 
         const first = this.videos[0];
@@ -173,16 +186,19 @@ export class EditPanel {
                 break;
             }
 
-            case 'requestPreviewProxy': {
-                if (!this.ownsPath(msg.path)) { break; }
-                let src: string | undefined, error: string | undefined;
+            case 'requestPreviewMedia': {
+                const meta = this.videos.find(v => v.path === msg.path);
+                if (!meta) { break; }
+                let sources: { src?: string; resourceSrc?: string } = {}, error: string | undefined;
                 try {
-                    const proxy = await this.previewProxy(msg.path, msg.mode);
-                    src = this.panel.webview.asWebviewUri(vscode.Uri.file(proxy)).toString();
+                    const file = await this.previewMedia(meta, msg.kind, fraction => {
+                        this.post({ type: 'previewProgress', reqId: msg.reqId, fraction });
+                    });
+                    sources = await this.playableSources(file);
                 } catch (e) {
                     error = e instanceof Error ? e.message : String(e);
                 }
-                this.post({ type: 'previewProxy', reqId: msg.reqId, src, error });
+                this.post({ type: 'previewMedia', reqId: msg.reqId, ...sources, error });
                 break;
             }
 
@@ -203,18 +219,47 @@ export class EditPanel {
         }
     }
 
-    /** Returns a cached browser-playable copy of a video, creating it if needed */
-    private async previewProxy(filePath: string, mode: 'remux' | 'transcode'): Promise<string> {
-        const stat = fs.statSync(filePath);
-        const key = createHash('sha1').update(`v2|${filePath}|${stat.size}|${stat.mtimeMs}|${mode}`).digest('hex');
-        const output = path.join(ffmpeg.previewProxyDir, `${key}.mp4`);
-        if (fs.existsSync(output)) {
-            return output;
+    /**
+     * URLs the webview can play a file from: the local media server first (fast, with range
+     * requests), then VS Code's resource loading in case localhost is unreachable (e.g. remote).
+     */
+    private async playableSources(file: string): Promise<{ src?: string; resourceSrc: string }> {
+        const resourceSrc = this.panel.webview.asWebviewUri(vscode.Uri.file(file)).toString();
+        try {
+            const { url, token } = await MediaServer.shared.serve(file);
+            this.servedTokens.push(token);
+            return { src: url, resourceSrc };
+        } catch {
+            return { resourceSrc };
+        }
+    }
+
+    /** Returns a cached file the webview can play for the trim preview, creating it if needed */
+    private async previewMedia(meta: VideoMeta, kind: PreviewKind, onProgress: (fraction: number) => void): Promise<string> {
+        const cache = PreviewCache.shared;
+        const file = cache.fileFor(meta.path, kind, kind === 'audio' ? ffmpeg.previewAudioExtension() : 'mp4');
+
+        if (fs.existsSync(file)) {
+            cache.touch(file);
+        } else {
+            // A video copy is about as large as the original, so make sure it fits with room to spare
+            if (kind !== 'audio' && cache.freeBytes() < fs.statSync(meta.path).size + 2 * 1024 ** 3) {
+                throw new Error('not enough free disk space to make a preview copy of this video');
+            }
+            await ffmpeg.makePreviewMedia(meta.path, file, kind, {
+                isHEVC: meta.isHEVC,
+                duration: meta.duration,
+                onProgress,
+                cancellationToken: this.work.token,
+            });
         }
 
-        const info = await ffprobe.getVideoInfo(filePath).catch(() => null);
-        await ffmpeg.makePreviewProxy(filePath, output, mode, !!info?.isHEVC, this.work.token);
-        return output;
+        if (!this.retained.has(file)) {
+            this.retained.add(file);
+            cache.retain(file);
+        }
+        cache.enforceLimit();
+        return file;
     }
 
     private async applyEdits(

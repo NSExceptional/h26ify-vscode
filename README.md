@@ -57,3 +57,4 @@ sudo dnf install ffmpeg   # Fedora
 
 - Output videos are written alongside the originals using a configurable name pattern.
 - Originals are never modified in place; the handling of the source file (keep, trash, or delete) is configurable in settings.
+- The trim preview keeps temporary files in your system temp folder: an extracted audio track (VS Code can't play AAC, the audio in most MP4/MOV files) and, for videos VS Code can't play at all (like MKV), a copy of the video. The cache is capped by `h26ify.previewCacheLimitGB` (default 5 GB), files unused for a week are removed automatically, and **H26ify: Clear Preview Cache** empties it.

@@ -15,6 +15,8 @@ import { VideoDataSource } from './video/video-data-source';
 import { VideoStorage } from './video/video-storage';
 import { EditPresetStorage } from './video/edit-preset';
 import { CollapseStateStore } from './views/collapse-state-store';
+import { PreviewCache } from './video/preview-cache';
+import { MediaServer } from './views/media-server';
 import ffmpeg from './cli/ffmpeg';
 import { VideoFileDecorationProvider } from './views/file-decorations';
 import VideoItem from './video/video-item';
@@ -66,6 +68,10 @@ export async function activate(context: vscode.ExtensionContext) {
     VideoStorage.shared.initialize(context);
     EditPresetStorage.shared.initialize(context);
     CollapseStateStore.shared.initialize(context);
+
+    // Drop stale trim-preview files from earlier sessions
+    try { PreviewCache.shared.prune(); } catch { /* best effort */ }
+    context.subscriptions.push({ dispose: () => MediaServer.shared.close() });
 
     // Register commands
     Commands.init(context);
