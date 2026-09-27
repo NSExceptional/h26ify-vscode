@@ -26,6 +26,8 @@ interface VideoMeta {
     duration: number;
     /** Webview URI for playing the original file directly */
     src?: string;
+    /** Codec of the first audio stream, if any; decides whether the webview can play it as-is */
+    audioCodec?: string;
 }
 
 interface VideoCrop {
@@ -129,6 +131,7 @@ export class EditPanel {
                     v.width = info.width ?? v.width;
                     v.height = info.height ?? v.height;
                     v.duration = info.duration ?? v.duration;
+                    v.audioCodec = info.audioCodec;
                 }
             } catch { /* keep existing values */ }
         }));
@@ -203,7 +206,7 @@ export class EditPanel {
     /** Returns a cached browser-playable copy of a video, creating it if needed */
     private async previewProxy(filePath: string, mode: 'remux' | 'transcode'): Promise<string> {
         const stat = fs.statSync(filePath);
-        const key = createHash('sha1').update(`${filePath}|${stat.size}|${stat.mtimeMs}|${mode}`).digest('hex');
+        const key = createHash('sha1').update(`v2|${filePath}|${stat.size}|${stat.mtimeMs}|${mode}`).digest('hex');
         const output = path.join(ffmpeg.previewProxyDir, `${key}.mp4`);
         if (fs.existsSync(output)) {
             return output;

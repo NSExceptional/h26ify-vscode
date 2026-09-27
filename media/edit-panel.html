@@ -1002,10 +1002,19 @@
     st.classList.toggle('hidden', !text);
   }
 
+  // Audio codecs VS Code's webview can decode. It silently plays AAC with no sound,
+  // so those videos get a copy with MP3 audio (the video stream is copied as-is).
+  const NATIVE_AUDIO = new Set(['mp3', 'flac']);
+
   function loadPreview(i) {
     pausePreview();
     previewLoadedFor = i;
     previewReady = false;
+    const audio = videos[i].audioCodec;
+    if (audio && !NATIVE_AUDIO.has(audio)) {
+      requestProxy(i, 'remux');
+      return;
+    }
     setPreviewStatus('Loading preview…');
     attemptPreview(i, 'native', videos[i].src);
   }
@@ -1042,7 +1051,7 @@
   const _proxyCbs = {};
   function requestProxy(i, mode) {
     setPreviewStatus(mode === 'remux'
-      ? 'Preparing preview…'
+      ? 'Preparing preview audio…'
       : 'Converting video for preview… this can take a while for long videos.');
     const reqId = ++_proxySeq;
     _proxyCbs[reqId] = (src, error) => {

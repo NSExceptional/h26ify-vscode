@@ -34,6 +34,7 @@ class ffprobe extends EnvironmentCmd {
             
             // Find video stream
             const videoStream = data.streams.find((stream: any) => stream.codec_type === 'video');
+            const audioStream = data.streams.find((stream: any) => stream.codec_type === 'audio');
             if (!videoStream) {
                 return null;
             }
@@ -51,6 +52,7 @@ class ffprobe extends EnvironmentCmd {
                 height: videoStream.height,
                 bitrate: data.format.bit_rate ? `${Math.round(data.format.bit_rate / 1000)} kbps` : 'Unknown',
                 duration: data.format.duration ? parseFloat(data.format.duration) : 0,
+                audioCodec: audioStream?.codec_name,
                 filename: path.basename(filePath),
             };
         } catch (error) {

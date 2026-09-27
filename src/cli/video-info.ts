@@ -14,5 +14,7 @@ export default interface VideoInfo {
     bitrate?: string;
     /** Seconds */
     duration?: number;
+    /** Codec of the first audio stream (e.g. `aac`), if there is one */
+    audioCodec?: string;
     filename: string;
 }

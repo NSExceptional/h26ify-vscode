@@ -111,14 +111,25 @@ class ffmpeg extends EnvironmentCmd {
         });
     }
 
+    private encoders: string | undefined;
+
+    /** Whether this ffmpeg build includes the given encoder (e.g. `libmp3lame`) */
+    hasEncoder(name: string): boolean {
+        if (this.encoders === undefined) {
+            const result = spawnSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' });
+            this.encoders = result.stdout ?? '';
+        }
+        return new RegExp(`\\s${name}\\s`).test(this.encoders);
+    }
+
     /** Where browser-playable preview copies of videos are cached */
     readonly previewProxyDir = path.join(os.tmpdir(), 'h26ify-preview');
 
     /**
      * Create a browser-playable copy of a video for previewing in a webview.
-     * `remux` copies the video stream into an MP4 container (near-instant, for
-     * containers the webview can't open, like MKV); `transcode` re-encodes to a
-     * 720p H.264 proxy (for codecs the webview can't decode).
+     * `remux` copies the video stream into an MP4 container (fast, for containers the
+     * webview can't open, like MKV); `transcode` re-encodes to a 720p H.264 proxy (for
+     * video codecs it can't decode). Either way the audio becomes stereo MP3 (or FLAC).
      * Writes to a temp file first so a cancelled run never leaves a partial output.
      */
     makePreviewProxy(
@@ -126,6 +137,10 @@ class ffmpeg extends EnvironmentCmd {
         cancellationToken?: vscode.CancellationToken
     ): Promise<void> {
         const tmp = `${output}.tmp.mp4`;
+        // VS Code's webview can't decode AAC (nearly every MP4/MOV's audio), but it can decode MP3/FLAC
+        const audioArgs = this.hasEncoder('libmp3lame')
+            ? ['-c:a', 'libmp3lame', '-b:a', '192k', '-ac', '2']
+            : ['-c:a', 'flac', '-ac', '2', '-strict', '-2'];
         const videoArgs = mode === 'remux'
             ? ['-c:v', 'copy', ...(isHEVC ? ['-tag:v', 'hvc1'] : [])]
             : ['-vf', "scale=-2:'min(720,trunc(ih/2)*2)'", '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p'];
@@ -133,7 +148,7 @@ class ffmpeg extends EnvironmentCmd {
             '-y', '-v', 'error', '-i', input,
             '-map', '0:v:0', '-map', '0:a:0?',
             ...videoArgs,
-            '-c:a', 'aac', '-b:a', '128k',
+            ...audioArgs,
             '-movflags', '+faststart',
             tmp,
         ];
