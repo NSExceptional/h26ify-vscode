@@ -32,6 +32,8 @@ interface VideoMeta {
     resourceSrc?: string;
     /** Codec of the first audio stream, if any; decides whether the webview can play it as-is */
     audioCodec?: string;
+    /** Codec of the video stream, e.g. `h264` or `av1` */
+    codec?: string;
     isHEVC?: boolean;
 }
 
@@ -144,6 +146,7 @@ export class EditPanel {
                     v.height = info.height ?? v.height;
                     v.duration = info.duration ?? v.duration;
                     v.audioCodec = info.audioCodec;
+                    v.codec = info.codec;
                     v.isHEVC = info.isHEVC;
                 }
             } catch { /* keep existing values */ }
@@ -242,12 +245,15 @@ export class EditPanel {
         if (fs.existsSync(file)) {
             cache.touch(file);
         } else {
-            // A video copy is about as large as the original, so make sure it fits with room to spare
-            if (kind !== 'audio' && cache.freeBytes() < fs.statSync(meta.path).size + 2 * 1024 ** 3) {
+            // A remux is about as large as the original; a 720p transcode is much smaller.
+            // Make sure the copy fits with room to spare.
+            const needed = { audio: 0, remux: fs.statSync(meta.path).size, transcode: 0 }[kind] + 2 * 1024 ** 3;
+            if (kind !== 'audio' && cache.freeBytes() < needed) {
                 throw new Error('not enough free disk space to make a preview copy of this video');
             }
             await ffmpeg.makePreviewMedia(meta.path, file, kind, {
                 isHEVC: meta.isHEVC,
+                codec: meta.codec,
                 duration: meta.duration,
                 onProgress,
                 cancellationToken: this.work.token,

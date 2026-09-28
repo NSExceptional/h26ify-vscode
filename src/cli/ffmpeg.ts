@@ -143,6 +143,8 @@ class ffmpeg extends EnvironmentCmd {
         input: string, output: string, kind: PreviewKind,
         options: {
             isHEVC?: boolean;
+            /** Codec of the source's video stream */
+            codec?: string;
             /** Source duration in seconds, used to report progress */
             duration?: number;
             onProgress?: (fraction: number) => void;
@@ -156,10 +158,15 @@ class ffmpeg extends EnvironmentCmd {
                 ? ['-map', '0:a:0', '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', '-ac', '2', '-compression_level', '9']
                 : ['-map', '0:a:0', '-vn', '-c:a', 'flac', '-ac', '2'],
             remux: ['-map', '0:v:0', '-an', '-c:v', 'copy', ...(options.isHEVC ? ['-tag:v', 'hvc1'] : [])],
-            transcode: ['-map', '0:v:0', '-an', '-vf', "scale=-2:'min(720,trunc(ih/2)*2)'",
+            // Constant frame rate fills gaps left by dropped (damaged) frames with the last good
+            // frame, so the preview's timeline still lines up with the original and its audio
+            transcode: ['-map', '0:v:0', '-an', '-vf', "scale=-2:'min(720,trunc(ih/2)*2)'", '-fps_mode', 'cfr', '-r', '30',
                 '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p'],
         }[kind];
-        const args = ['-y', '-v', 'error', '-nostats', '-progress', 'pipe:1', '-i', input, ...kindArgs, tmp];
+        // Damaged AV1 (e.g. a recording that was cut off and repaired) otherwise decodes to frames
+        // with garbage color metadata, which aborts the whole conversion; strict decoding drops them
+        const inputArgs = kind === 'transcode' && options.codec === 'av1' ? ['-strict', 'strict'] : [];
+        const args = ['-y', '-v', 'error', '-nostats', '-progress', 'pipe:1', ...inputArgs, '-i', input, ...kindArgs, tmp];
 
         fs.mkdirSync(path.dirname(output), { recursive: true });
         return new Promise((resolve, reject) => {

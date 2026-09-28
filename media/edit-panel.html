@@ -922,6 +922,8 @@
   let previewIndex = 0;       // which selected video the preview shows
   let previewLoadedFor = -1;  // index whose media is loading or loaded
   let previewReady = false;
+  /** Which file the loaded preview plays: 'native' (the original), 'remux', or 'transcode' */
+  let previewStage = 'native';
   let loopSelection = false;
   let playStopAt = null;      // pause (or loop) here; null = play to the end of the video
   let playRAF = null;
@@ -1045,22 +1047,12 @@
       trimVideo.removeEventListener('loadeddata', onLoaded);
       trimVideo.removeEventListener('error', onError);
     };
-    // A remux can't help a codec the webview can't decode, so that case goes straight to transcoding
-    const fallback = undecodable => {
-      const kind = stage === 'native' && !undecodable ? 'remux' : stage === 'transcode' ? null : 'transcode';
-      if (!kind) {
-        setPreviewStatus('This video can’t be previewed.');
-        return;
-      }
-      // Copies are video-only, so their sound comes from the separate audio track
-      if (videos[i].audioCodec) { loadAudioTrack(i); }
-      requestVideoCopy(i, kind);
-    };
     const onLoaded = () => {
       cleanup();
       if (previewLoadedFor !== i) { return; }
-      if (!trimVideo.videoWidth) { fallback(true); return; } // audio decoded, video track didn't
+      if (!trimVideo.videoWidth) { fallbackPreview(i, stage, true); return; } // audio decoded, video track didn't
       previewReady = true;
+      previewStage = stage;
       setPreviewStatus(null);
       trimVideo.currentTime = playheadTime;
       applyMute();
@@ -1068,13 +1060,38 @@
     const onError = () => {
       cleanup();
       if (previewLoadedFor !== i) { return; }
-      if (sources.length > 1) { attemptPreview(i, stage, sources.slice(1)); }
-      else { fallback(false); }
+      // The other URL serves the same bytes, so it can't help with data the webview can't decode
+      const undecodable = trimVideo.error?.code === MediaError.MEDIA_ERR_DECODE;
+      if (sources.length > 1 && !undecodable) { attemptPreview(i, stage, sources.slice(1)); }
+      else { fallbackPreview(i, stage, undecodable); }
     };
     trimVideo.addEventListener('loadeddata', onLoaded);
     trimVideo.addEventListener('error', onError);
     trimVideo.src = sources[0];
   }
+
+  /**
+   * Moves on to a playable copy after `stage` failed. A remux only helps with the container,
+   * so video the webview can't decode goes straight to transcoding.
+   */
+  function fallbackPreview(i, stage, undecodable) {
+    const kind = stage === 'native' && !undecodable ? 'remux' : stage === 'transcode' ? null : 'transcode';
+    if (!kind) {
+      setPreviewStatus('This video can’t be previewed.');
+      return;
+    }
+    // Copies are video-only, so their sound comes from the separate audio track
+    if (videos[i].audioCodec) { loadAudioTrack(i); }
+    requestVideoCopy(i, kind);
+  }
+
+  // Damage partway through a video only surfaces once playback reaches it
+  trimVideo.addEventListener('error', () => {
+    if (!previewReady || trimVideo.error?.code !== MediaError.MEDIA_ERR_DECODE) { return; }
+    previewReady = false;
+    pausePreview();
+    fallbackPreview(previewLoadedFor, previewStage, true);
+  });
 
   function requestVideoCopy(i, kind) {
     const label = kind === 'remux' ? 'Preparing preview' : 'Converting video for preview';

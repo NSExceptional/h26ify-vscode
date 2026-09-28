@@ -2,6 +2,13 @@
 
 All notable changes to the "h26ify" extension are documented here.
 
+## [2026.9.28]
+
+### Fixed
+- The trim preview now works for videos with damaged stretches (such as a recording that was cut off and repaired). Damaged frames are skipped and show the nearest good frame, instead of the preview failing with "error while processing the decoded data stream".
+- Video the webview can't decode goes straight to a small 720p preview copy instead of first making a full-size copy that couldn't play either. The preview also recovers if playback hits damage partway through.
+- A 720p preview copy no longer needs free space for a full-size copy.
+
 ## [2026.9.27]
 
 ### Added
